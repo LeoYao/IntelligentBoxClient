@@ -4,7 +4,6 @@
 #define VMWARE
 
 #include <params.h>
-
 #include <ctype.h>
 #include <dirent.h>
 #include <errno.h>
@@ -18,13 +17,10 @@
 #include <unistd.h>
 #include <sys/types.h>
 
+#include <dropbox.h>
+#include <memStream.h>
+#include <log.h>
 
-extern "C"
-{
-	#include <dropbox.h>
-	#include <memStream.h>
-	#include <log.h>
-}
 
 //#define HAVE_SYS_XATTR_H
 
@@ -32,8 +28,8 @@ extern "C"
 #include <sys/xattr.h>
 #endif
 
-#include <dropbox_log_utils.hpp>
-#include <common_utils.hpp>
+#include <dropbox_log_utils.h>
+#include <common_utils.h>
 
 
 // Report errors to logfile and give -errno to caller
@@ -659,12 +655,11 @@ void *bb_init(struct fuse_conn_info *conn)
  */
 void bb_destroy(void *userdata)
 {
-	bb_state* private_data = (bb_state*)userdata;
+	struct bb_state *private_data = userdata;
 	drbDestroyClient(private_data->client);
 	drbCleanup();
 
     log_msg("\nbb_destroy(userdata=0x%08x)\n", userdata);
-
 }
 
 /**
@@ -987,57 +982,54 @@ int bb_fgetattr(const char *path, struct stat *statbuf, struct fuse_file_info *f
 
 		drbDestroyMetadata(meta, true);
 	}
+	return err;
 }
 
-static struct bb_operations : fuse_operations
-{
-	bb_operations()
-	{
-		  getattr = ibc_getattr;
-		  //readlink = bb_readlink;
+struct fuse_operations bb_oper = {
+	  .getattr = ibc_getattr,
+	  //readlink = bb_readlink,
 
-		  // no .getdir -- that's deprecated
-		  /*getdir = NULL;
-		  mknod = bb_mknod;
-		  mkdir = bb_mkdir;
-		  unlink = bb_unlink;
-		  rmdir = bb_rmdir;
-		  symlink = bb_symlink;
-		  rename = bb_rename;
-		  link = bb_link;
-		  chmod = bb_chmod;
-		  chown = bb_chown;
-		  truncate = bb_truncate;
-		  utime = bb_utime;
-		  open = bb_open;
-		  read = bb_read;
-		  write = bb_write;*/
+	  // no .getdir -- that's deprecated
+	  /*getdir = NULL,
+	  mknod = bb_mknod,
+	  mkdir = bb_mkdir,
+	  unlink = bb_unlink,
+	  rmdir = bb_rmdir,
+	  symlink = bb_symlink,
+	  rename = bb_rename,
+	  link = bb_link,
+	  chmod = bb_chmod,
+	  chown = bb_chown,
+	  truncate = bb_truncate,
+	  utime = bb_utime,
+	  open = bb_open,
+	  read = bb_read,
+	  write = bb_write,*/
 
-		  /** Just a placeholder, don't set */ // huh???
-		  /*statfs = bb_statfs;
-		  flush = bb_flush;
-		  release = bb_release;
-		  fsync = bb_fsync;*/
-/*
-		#ifdef HAVE_SYS_XATTR_H
-		  setxattr = bb_setxattr;
-		  getxattr = bb_getxattr;
-		  listxattr = bb_listxattr;
-		  removexattr = bb_removexattr;
-		#endif
-*/
-		  opendir = bb_opendir;
-		  readdir = bb_readdir;
-		  releasedir = bb_releasedir;
-		  //fsyncdir = bb_fsyncdir;
-		  init = bb_init;
-		  destroy = bb_destroy;
-		  access = bb_access;
-		  //create = bb_create;
-		  //ftruncate = bb_ftruncate;
-		  //fgetattr = bb_fgetattr;
-	}
-} bb_oper;
+	  /** Just a placeholder, don't set */ // huh???
+	  /*statfs = bb_statfs,
+	  flush = bb_flush,
+	  release = bb_release,
+	  fsync = bb_fsync,*/
+	/*
+	#ifdef HAVE_SYS_XATTR_H
+	  setxattr = bb_setxattr,
+	  getxattr = bb_getxattr,
+	  listxattr = bb_listxattr,
+	  removexattr = bb_removexattr,
+	#endif
+	*/
+	  .opendir = bb_opendir,
+	  .readdir = bb_readdir,
+	  .releasedir = bb_releasedir,
+	  //fsyncdir = bb_fsyncdir,
+	  .init = bb_init,
+	  .destroy = bb_destroy,
+	  .access = bb_access,
+	  //create = bb_create,
+	  //ftruncate = bb_ftruncate,
+	  //fgetattr = bb_fgetattr
+};
 
 void bb_usage()
 {
@@ -1091,7 +1083,7 @@ int main(int argc, char *argv[])
     if ((argc < 3) || (argv[argc-2][0] == '-') || (argv[argc-1][0] == '-'))
 	bb_usage();
 
-    bb_data = (bb_state *)malloc(sizeof(struct bb_state));
+    bb_data = malloc(sizeof(struct bb_state));
     if (bb_data == NULL) {
 	perror("main calloc");
 	abort();

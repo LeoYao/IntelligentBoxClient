@@ -5,7 +5,7 @@
  *      Author: hadoop
  */
 
-#include <common_utils.hpp>
+#include <common_utils.h>
 
 int getLastSlashPosition(const char* path)
 {
