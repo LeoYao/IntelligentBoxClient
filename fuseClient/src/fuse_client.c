@@ -21,7 +21,6 @@
 #include <memStream.h>
 #include <log.h>
 
-
 //#define HAVE_SYS_XATTR_H
 
 #ifdef HAVE_SYS_XATTR_H
@@ -31,6 +30,15 @@
 #include <dropbox_log_utils.h>
 #include <common_utils.h>
 
+
+#include <sqlite3.h>
+
+/*
+* From LY:
+* The below include is just for showing how to work with sqlite.
+* It should be removed in formal code
+**/
+#include <test_sqlite.h>
 
 // Report errors to logfile and give -errno to caller
 static int bb_error(char *str)
@@ -1039,6 +1047,13 @@ void bb_usage()
 
 int main(int argc, char *argv[])
 {
+	/*
+	* From LY:
+	* The below function call is just for showing how to work with sqlite.
+	* It should be removed in formal code
+	**/
+	test_sqlite();
+
     int fuse_stat;
     struct bb_state *bb_data;
 
@@ -1107,6 +1122,5 @@ int main(int argc, char *argv[])
 
     return fuse_stat;
 }
-
 
 
