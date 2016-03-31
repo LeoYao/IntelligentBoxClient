@@ -1045,6 +1045,31 @@ void bb_usage()
     abort();
 }
 
+static int callback(void *NotUsed, int argc, char **argv, char **azColName){
+  int i;
+  for(i=0; i<argc; i++){
+    printf("%s = %s\n", azColName[i], argv[i] ? argv[i] : "NULL");
+  }
+  printf("-------------------------\n");
+  return 0;
+}
+
+//Initiating database
+int init_sqlite(){
+	sqlite3 *db1;
+	char *zErrMsg = 0;
+	int rc;
+		rc = sqlite3_open_v2("dir.db", &db1, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL);
+	if( rc ){
+		fprintf(stderr, "Can't open database: %s\n", sqlite3_errmsg(db1));
+		sqlite3_close(db1);
+		return(1);
+	}
+}
+
+
+
+
 int main(int argc, char *argv[])
 {
 	/*
@@ -1119,6 +1144,7 @@ int main(int argc, char *argv[])
     fprintf(stderr, "about to call fuse_main\n");
     fuse_stat = fuse_main(argc, argv, &bb_oper, bb_data);
     fprintf(stderr, "fuse_main returned %d\n", fuse_stat);
+    init_sqlite();
 
     return fuse_stat;
 }
