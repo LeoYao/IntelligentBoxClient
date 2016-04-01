@@ -1065,8 +1065,23 @@ int init_sqlite(){
 		sqlite3_close(db1);
 		return(1);
 	}
-}
 
+	// Create a table Directory for storage several metadata on the files
+	// Or on Dropbox. If table already exists, ignore the SQL.
+	char *sql = "create table if not exists DIRECTORY (full_path varchar(4000) PRIMARY KEY, parent_folder_full_path varchar(4000), entry_name varchar(255), old_full_path varchar(4000), type integer, size integer, mtime datetime, atime datetime, is_locked integer, is_modified integer, is_local integer, is_deleted integer, in_use_count integer);";
+	rc = sqlite3_exec(db1, sql, 0, 0, &zErrMsg);
+		if( rc!=SQLITE_OK ){
+			fprintf(stderr, "SQL error: %s\n", zErrMsg);
+			sqlite3_free(zErrMsg);
+		}
+	sql = "create table if not exists LOCK (dummy char(1));";
+	rc = sqlite3_exec(db1, sql, 0, 0, &zErrMsg);
+		if( rc!=SQLITE_OK ){
+			fprintf(stderr, "SQL error: %s\n", zErrMsg);
+			sqlite3_free(zErrMsg);
+		}
+
+}
 
 
 
