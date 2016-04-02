@@ -346,6 +346,11 @@ int bb_utime(const char *path, struct utimbuf *ubuf)
  * which will be passed to all file operations.
  *
  * Changed in version 2.2
+ *
+ * YC: If the file is on local storage (search database), open it
+ * Otherwise download the file from Dropbox, update on database then open it.
+ *
+ *
  */
 int bb_open(const char *path, struct fuse_file_info *fi)
 {
