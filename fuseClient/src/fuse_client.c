@@ -20,6 +20,7 @@
 #include <dropbox.h>
 #include <memStream.h>
 #include <log.h>
+#include <time.h>
 
 //#define HAVE_SYS_XATTR_H
 
@@ -347,7 +348,7 @@ int bb_utime(const char *path, struct utimbuf *ubuf)
  *
  * Changed in version 2.2
  *
- * YC: If the file is on local storage (search database), open it
+ * ychen71: If the file is on local storage (search database), open it
  * Otherwise download the file from Dropbox, update on database then open it.
  *
  *
@@ -361,7 +362,7 @@ int bb_open(const char *path, struct fuse_file_info *fi)
     //Prepare the sql statement
     char* sql1 = "SELECT is_local FROM Directory WHERE full_path =";
     char* sql2 = fpath;
-    char* sql_search_local = (char*)malloc(1+strlen(sql1)+strlen(sql2));
+    char* sql_search_local = (char*)malloc(1+strlen(sql1)+strlen(sql2)+strlen(fpath));
     strcpy(sql_search_local, sql1);
     strcpy(sql_search_local, sql2);
 
@@ -395,7 +396,9 @@ int bb_open(const char *path, struct fuse_file_info *fi)
             displayMetadata(output, "Get File Result");
             drbDestroyMetadata(output, true);
             char* sql3 = "UPDATE Directory SET is_local=1 WHERE full_path=";
-            char* sql_update_local= (char*)malloc(1+strlen(sql3)+strlen(sql2));
+            char* sql_update_local= (char*)malloc(1+strlen(sql3)+strlen(sql2)+strlen(fpath));
+            strcpy(sql_update_local, sql3);
+            strcpy(sql_update_local, fpath);
             rc = sqlite3_exec(db1, sql_update_local, 0, 0, &zErrMsg);
 
            // If there's an error updating the database table, print it out.
@@ -405,6 +408,7 @@ int bb_open(const char *path, struct fuse_file_info *fi)
             	}
         }
     }
+
     else{
 
     // If the file is local, just open it.
@@ -414,9 +418,33 @@ int bb_open(const char *path, struct fuse_file_info *fi)
 
     fi->fh = fd;
     log_fi(fi);
+    }
 
     return retstat;
-    }
+    // Get timestamp when the file was open
+    time_t now;
+    struct tm ts;
+    char buf[80];
+    time(&now);
+    ts = *localtime(&time);
+    strftime(buf, sizeof(buf));
+    char* sql4 = "UPDATE Directory SET atime =";
+    char* sql5 = "WHERE full_path =";
+    char* sql_update_atime = (char*)malloc(1+strlen(sql4)+strlen(buf)+strlen(sql5)+strlen(fpath));
+    strcpy(sql_update_atime, sql4);
+    strcpy(sql_update_atime, buf);
+    strcpy(sql_update_atime, sql5);
+    strcpy(sql_update_atime, fpath);
+
+   //Update on atime in Directory table
+    rc = sqlite3_exec(db1, sql_update_atime, 0, 0, &zErrMsg);
+
+               // If there's an error updating the database table, print it out.
+                if( rc!=SQLITE_OK ){
+                		fprintf(stderr, "SQL error: %s\n", zErrMsg);
+                		sqlite3_free(zErrMsg);
+                	}
+
 }
 
 /** Read data from an open file
@@ -438,6 +466,8 @@ int bb_open(const char *path, struct fuse_file_info *fi)
 int bb_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi)
 {
     int retstat = 0;
+    char fpath[PATH_MAX];
+    bb_fullpath(fpath, path);
 
     log_msg("\nbb_read(path=\"%s\", buf=0x%08x, size=%d, offset=%lld, fi=0x%08x)\n",
 	    path, buf, size, offset, fi);
@@ -465,6 +495,9 @@ int bb_write(const char *path, const char *buf, size_t size, off_t offset,
 	     struct fuse_file_info *fi)
 {
     int retstat = 0;
+    // Get full path to update the database
+    char fpath[PATH_MAX];
+    bb_fullpath(fpath, path);
 
     log_msg("\nbb_write(path=\"%s\", buf=0x%08x, size=%d, offset=%lld, fi=0x%08x)\n",
 	    path, buf, size, offset, fi
@@ -476,6 +509,8 @@ int bb_write(const char *path, const char *buf, size_t size, off_t offset,
     if (retstat < 0)
 	retstat = bb_error("bb_write pwrite");
 
+    char* sql1= "UPDATE Directory SET ";
+    char* sql2 = fpath;
     return retstat;
 }
 
