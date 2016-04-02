@@ -352,22 +352,32 @@ int bb_open(const char *path, struct fuse_file_info *fi)
     int retstat = 0;
     int fd;
     char fpath[PATH_MAX];
+
     //Prepare the sql statement
     char* sql1 = "SELECT is_local FROM Directory WHERE full_path =";
     char* sql2 = fpath;
-    char* sql = (char*)malloc(1+strlen(sql1)+strlen(sql2));
-    strcpy(sql, sql1);
-    strcpy(sql, sql2);
-    rc = sqlite3_exec(db1, sql, 0, 0, &zErrMsg);
+    char* sql_search_local = (char*)malloc(1+strlen(sql1)+strlen(sql2));
+    strcpy(sql_search_local, sql1);
+    strcpy(sql_search_local, sql2);
 
-    if(callback=0){
+    // Executing sql statement seaching for the file to see if it's on local storage
+    rc = sqlite3_exec(db1, sql_search_local, 0, 0, &zErrMsg);
+
+    // If there's error executing the sql statement, print it out.
+    if( rc!=SQLITE_OK ){
+    		fprintf(stderr, "SQL error: %s\n", zErrMsg);
+    		sqlite3_free(zErrMsg);
+    	}
+
+    // If the file is not on local, Download it from Dropbox
+    if(callback==0){
     log_msg("\nbb_open(path\"%s\", fi=0x%08x)\n",
 	    path, fi);
     bb_fullpath(fpath, path);
     FILE *file = fopen(fpath, "w"); // Write it in this file
         output = NULL;
         err = drbGetFile(cli, &output,
-                         DRBOPT_PATH, "/hello.txt",
+                         DRBOPT_PATH, fpath,
                          DRBOPT_IO_DATA, file,
                          DRBOPT_IO_FUNC, fwrite,
                          DRBOPT_END);
@@ -379,9 +389,20 @@ int bb_open(const char *path, struct fuse_file_info *fi)
         } else {
             displayMetadata(output, "Get File Result");
             drbDestroyMetadata(output, true);
+            char* sql3 = "UPDATE Directory SET is_local=1 WHERE full_path=";
+            char* sql_update_local= (char*)malloc(1+strlen(sql3)+strlen(sql2));
+            rc = sqlite3_exec(db1, sql_update_local, 0, 0, &zErrMsg);
+
+           // If there's an error updating the database table, print it out.
+            if( rc!=SQLITE_OK ){
+            		fprintf(stderr, "SQL error: %s\n", zErrMsg);
+            		sqlite3_free(zErrMsg);
+            	}
         }
     }
     else{
+
+    // If the file is local, just open it.
     fd = open(fpath, fi->flags);
     if (fd < 0)
 	retstat = bb_error("bb_open open");
