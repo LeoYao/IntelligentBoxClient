@@ -57,6 +57,7 @@
 	sqlite3 *db1;
 	int rc;
 	char *zErrMsg = 0;
+	char fpath[PATH_MAX];
 
 // Report errors to logfile and give -errno to caller
 static int bb_error(char *str)
@@ -419,31 +420,12 @@ int bb_open(const char *path, struct fuse_file_info *fi)
     fi->fh = fd;
     log_fi(fi);
     }
+    // Get timestamp when the file was open
+    update_atime();
 
     return retstat;
-    // Get timestamp when the file was open
-    time_t now;
-    struct tm ts;
-    char buf[80];
-    time(&now);
-    ts = *localtime(&time);
-    strftime(buf, sizeof(buf));
-    char* sql4 = "UPDATE Directory SET atime =";
-    char* sql5 = "WHERE full_path =";
-    char* sql_update_atime = (char*)malloc(1+strlen(sql4)+strlen(buf)+strlen(sql5)+strlen(fpath));
-    strcpy(sql_update_atime, sql4);
-    strcpy(sql_update_atime, buf);
-    strcpy(sql_update_atime, sql5);
-    strcpy(sql_update_atime, fpath);
 
-   //Update on atime in Directory table
-    rc = sqlite3_exec(db1, sql_update_atime, 0, 0, &zErrMsg);
 
-               // If there's an error updating the database table, print it out.
-                if( rc!=SQLITE_OK ){
-                		fprintf(stderr, "SQL error: %s\n", zErrMsg);
-                		sqlite3_free(zErrMsg);
-                	}
 
 }
 
@@ -478,7 +460,13 @@ int bb_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_
     if (retstat < 0)
 	retstat = bb_error("bb_read read");
 
+    // Get timestamp when the file was open
+    update_atime();
+
     return retstat;
+
+
+
 }
 
 /** Write data to an open file
@@ -511,6 +499,9 @@ int bb_write(const char *path, const char *buf, size_t size, off_t offset,
 
     char* sql1= "UPDATE Directory SET ";
     char* sql2 = fpath;
+
+    // Get timestamp when the file was open
+     update_atime();
     return retstat;
 }
 
@@ -1264,6 +1255,31 @@ int main(int argc, char *argv[])
     init_sqlite();
 
     return fuse_stat;
+}
+
+int update_atime(){
+	time_t now;
+	    struct tm ts;
+	    char buf[80];
+	    time(&now);
+	    ts = *localtime(&time);
+	    strftime(buf, sizeof(buf));
+	    char* sql4 = "UPDATE Directory SET atime =";
+	    char* sql5 = "WHERE full_path =";
+	    char* sql_update_atime = (char*)malloc(1+strlen(sql4)+strlen(buf)+strlen(sql5)+strlen(fpath));
+	    strcpy(sql_update_atime, sql4);
+	    strcpy(sql_update_atime, buf);
+	    strcpy(sql_update_atime, sql5);
+	    strcpy(sql_update_atime, fpath);
+
+	   //Update on atime in Directory table
+	    rc = sqlite3_exec(db1, sql_update_atime, 0, 0, &zErrMsg);
+
+	               // If there's an error updating the database table, print it out.
+	                if( rc!=SQLITE_OK ){
+	                		fprintf(stderr, "SQL error: %s\n", zErrMsg);
+	                		sqlite3_free(zErrMsg);
+	                	}
 }
 
 
