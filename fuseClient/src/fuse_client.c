@@ -1163,7 +1163,7 @@ static int callback(void *NotUsed, int argc, char **argv, char **azColName){
 //Initiating database
 int init_sqlite(){
 
-		rc = sqlite3_open_v2("dir.db", &db1, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL);
+	rc = sqlite3_open_v2("dir.db", &db1, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL);
 	if( rc ){
 		fprintf(stderr, "Can't open database: %s\n", sqlite3_errmsg(db1));
 		sqlite3_close(db1);
@@ -1184,6 +1184,7 @@ int init_sqlite(){
 			fprintf(stderr, "SQL error: %s\n", zErrMsg);
 			sqlite3_free(zErrMsg);
 		}
+		return (0);
 
 }
 
@@ -1291,6 +1292,7 @@ int update_atime(){
 	                		fprintf(stderr, "SQL error: %s\n", zErrMsg);
 	                		sqlite3_free(zErrMsg);
 	                	}
+	                return (0);
 }
 
 
