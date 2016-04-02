@@ -40,6 +40,20 @@
 **/
 #include <test_sqlite.h>
 
+ 	char *c_key    = "d9m9s1iylifpqsx";  //< consumer key
+	char *c_secret = "x2pfq4vkf5bytnq";  //< consumer secret
+
+	// User key and secret. Leave them NULL or set them with your AccessToken.
+	//char *t_key    = "8pfo7r8fjml1xo6i"; // iihdh3t3dcld9svd < access token key
+	//char *t_secret = "m4glqxs42dcop4i";  // 0fw3qvfrqo1dlxx < access token secret
+	char *t_key    = "iihdh3t3dcld9svd"; //< access token key
+	char *t_secret = "0fw3qvfrqo1dlxx";  //< access token secret
+
+	// Create a Dropbox client
+	drbClient* cli = drbCreateClient(c_key, c_secret, t_key, t_secret);
+	void* output;
+	int err;
+
 // Report errors to logfile and give -errno to caller
 static int bb_error(char *str)
 {
@@ -339,6 +353,22 @@ int bb_open(const char *path, struct fuse_file_info *fi)
     log_msg("\nbb_open(path\"%s\", fi=0x%08x)\n",
 	    path, fi);
     bb_fullpath(fpath, path);
+    FILE *file = fopen("/tmp/hello.txt", "w"); // Write it in this file
+        output = NULL;
+        err = drbGetFile(cli, &output,
+                         DRBOPT_PATH, "/hello.txt",
+                         DRBOPT_IO_DATA, file,
+                         DRBOPT_IO_FUNC, fwrite,
+                         DRBOPT_END);
+        fclose(file);
+
+        if (err != DRBERR_OK) {
+            printf("Get File error (%d): %s\n", err, (char*)output);
+            free(output);
+        } else {
+            displayMetadata(output, "Get File Result");
+            drbDestroyMetadata(output, true);
+        }
 
     fd = open(fpath, fi->flags);
     if (fd < 0)
