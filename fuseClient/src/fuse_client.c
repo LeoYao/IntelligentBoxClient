@@ -53,6 +53,9 @@
 	drbClient* cli = drbCreateClient(c_key, c_secret, t_key, t_secret);
 	void* output;
 	int err;
+	sqlite3 *db1;
+	int rc;
+	char *zErrMsg = 0;
 
 // Report errors to logfile and give -errno to caller
 static int bb_error(char *str)
@@ -349,11 +352,19 @@ int bb_open(const char *path, struct fuse_file_info *fi)
     int retstat = 0;
     int fd;
     char fpath[PATH_MAX];
+    //Prepare the sql statement
+    char* sql1 = "SELECT is_local FROM Directory WHERE full_path =";
+    char* sql2 = fpath;
+    char* sql = (char*)malloc(1+strlen(sql1)+strlen(sql2));
+    strcpy(sql, sql1);
+    strcpy(sql, sql2);
+    rc = sqlite3_exec(db1, sql, 0, 0, &zErrMsg);
 
+    if(callback=0){
     log_msg("\nbb_open(path\"%s\", fi=0x%08x)\n",
 	    path, fi);
     bb_fullpath(fpath, path);
-    FILE *file = fopen("/tmp/hello.txt", "w"); // Write it in this file
+    FILE *file = fopen(fpath, "w"); // Write it in this file
         output = NULL;
         err = drbGetFile(cli, &output,
                          DRBOPT_PATH, "/hello.txt",
@@ -369,7 +380,8 @@ int bb_open(const char *path, struct fuse_file_info *fi)
             displayMetadata(output, "Get File Result");
             drbDestroyMetadata(output, true);
         }
-
+    }
+    else{
     fd = open(fpath, fi->flags);
     if (fd < 0)
 	retstat = bb_error("bb_open open");
@@ -378,6 +390,7 @@ int bb_open(const char *path, struct fuse_file_info *fi)
     log_fi(fi);
 
     return retstat;
+    }
 }
 
 /** Read data from an open file
@@ -1086,9 +1099,7 @@ static int callback(void *NotUsed, int argc, char **argv, char **azColName){
 
 //Initiating database
 int init_sqlite(){
-	sqlite3 *db1;
-	char *zErrMsg = 0;
-	int rc;
+
 		rc = sqlite3_open_v2("dir.db", &db1, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL);
 	if( rc ){
 		fprintf(stderr, "Can't open database: %s\n", sqlite3_errmsg(db1));
