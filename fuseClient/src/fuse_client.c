@@ -363,7 +363,7 @@ int bb_open(const char *path, struct fuse_file_info *fi)
     //Prepare the sql statement
     char* sql1 = "SELECT is_local FROM Directory WHERE full_path =";
     char* sql2 = fpath;
-    char* sql_search_local = (char*)malloc(1+strlen(sql1)+strlen(sql2)+strlen(fpath));
+    char* sql_search_local = (char*)malloc(1+strlen(sql1)+strlen(sql2));
     strcpy(sql_search_local, sql1);
     strcpy(sql_search_local, sql2);
 
@@ -397,7 +397,7 @@ int bb_open(const char *path, struct fuse_file_info *fi)
             displayMetadata(output, "Get File Result");
             drbDestroyMetadata(output, true);
             char* sql3 = "UPDATE Directory SET is_local=1 WHERE full_path=";
-            char* sql_update_local= (char*)malloc(1+strlen(sql3)+strlen(sql2)+strlen(fpath));
+            char* sql_update_local= (char*)malloc(1+strlen(sql3)+strlen(sql2));
             strcpy(sql_update_local, sql3);
             strcpy(sql_update_local, fpath);
             rc = sqlite3_exec(db1, sql_update_local, 0, 0, &zErrMsg);
@@ -497,8 +497,19 @@ int bb_write(const char *path, const char *buf, size_t size, off_t offset,
     if (retstat < 0)
 	retstat = bb_error("bb_write pwrite");
 
-    char* sql1= "UPDATE Directory SET ";
+    char* sql1= "UPDATE Directory SET mtime = 1 where fill_path = ";
     char* sql2 = fpath;
+    char* sql_update_mtime = (char*)malloc(1+strlen(sql1)+strlen(sql2));
+    strcpy(sql_update_mtime, sql1);
+    strcpy(sql_update_mtime, sql2);
+
+    rc = sqlite3_exec(db1, sql_update_mtime, 0, 0, &zErrMsg);
+
+               // If there's an error updating the database table, print it out.
+                if( rc!=SQLITE_OK ){
+                		fprintf(stderr, "SQL error: %s\n", zErrMsg);
+                		sqlite3_free(zErrMsg);
+                	}
 
     // Get timestamp when the file was open
      update_atime();
