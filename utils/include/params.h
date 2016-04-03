@@ -25,11 +25,13 @@
 #include <stdio.h>
 #include "dropbox.h"
 #include <fuse.h>
+#include <sqlite3.h>
 
 struct bb_state {
     FILE *logfile;
     char *rootdir;
     drbClient* client;
+    sqlite3 *sqlite_conn;
 };
 
 #define BB_DATA ((struct bb_state *) fuse_get_context()->private_data)

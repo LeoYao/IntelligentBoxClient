@@ -34,30 +34,8 @@
 
 #include <sqlite3.h>
 
-/*
-* From LY:
-* The below include is just for showing how to work with sqlite.
-* It should be removed in formal code
-**/
-#include <test_sqlite.h>
 
- 	char *c_key    = "d9m9s1iylifpqsx";  //< consumer key
-	char *c_secret = "x2pfq4vkf5bytnq";  //< consumer secret
-
-	// User key and secret. Leave them NULL or set them with your AccessToken.
-	//char *t_key    = "8pfo7r8fjml1xo6i"; // iihdh3t3dcld9svd < access token key
-	//char *t_secret = "m4glqxs42dcop4i";  // 0fw3qvfrqo1dlxx < access token secret
-	char *t_key    = "iihdh3t3dcld9svd"; //< access token key
-	char *t_secret = "0fw3qvfrqo1dlxx";  //< access token secret
-
-	// Create a Dropbox client
-	drbClient* cli = drbCreateClient(c_key, c_secret, t_key, t_secret);
-	void* output;
-	int err;
-	sqlite3 *db1;
-	int rc;
-	char *zErrMsg = 0;
-	char fpath[PATH_MAX];
+static int callback(void *NotUsed, int argc, char **argv, char **azColName);
 
 // Report errors to logfile and give -errno to caller
 static int bb_error(char *str)
@@ -356,9 +334,18 @@ int bb_utime(const char *path, struct utimbuf *ubuf)
  */
 int bb_open(const char *path, struct fuse_file_info *fi)
 {
+	void* output;
+	int err;
+	int rc;
+	char *zErrMsg = 0;
+	char fpath[PATH_MAX];
+	int* is_local;
+
+	drbClient* cli = BB_DATA->client;
+	sqlite3* db1 = BB_DATA->sqlite_conn;
+
     int retstat = 0;
     int fd;
-    char fpath[PATH_MAX];
 
     //Prepare the sql statement
     char* sql1 = "SELECT is_local FROM Directory WHERE full_path =";
@@ -368,7 +355,7 @@ int bb_open(const char *path, struct fuse_file_info *fi)
     strcpy(sql_search_local, sql2);
 
     // Executing sql statement seaching for the file to see if it's on local storage
-    rc = sqlite3_exec(db1, sql_search_local, 0, 0, &zErrMsg);
+    rc = sqlite3_exec(db1, sql_search_local, callback, &is_local, &zErrMsg);
 
     // If there's error executing the sql statement, print it out.
     if( rc!=SQLITE_OK ){
@@ -377,7 +364,7 @@ int bb_open(const char *path, struct fuse_file_info *fi)
     	}
 
     // If the file is not on local, Download it from Dropbox
-    if(callback==0){
+    if( (*is_local) == 0){
     log_msg("\nbb_open(path\"%s\", fi=0x%08x)\n",
 	    path, fi);
     bb_fullpath(fpath, path);
@@ -482,9 +469,17 @@ int bb_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_
 int bb_write(const char *path, const char *buf, size_t size, off_t offset,
 	     struct fuse_file_info *fi)
 {
+	void* output;
+		int err;
+		int rc;
+		char *zErrMsg = 0;
+		char fpath[PATH_MAX];
+
+		drbClient* cli = BB_DATA->client;
+		sqlite3* db1 = BB_DATA->sqlite_conn;
+
     int retstat = 0;
     // Get full path to update the database
-    char fpath[PATH_MAX];
     bb_fullpath(fpath, path);
 
     log_msg("\nbb_write(path=\"%s\", buf=0x%08x, size=%d, offset=%lld, fi=0x%08x)\n",
@@ -1012,9 +1007,9 @@ int ibc_getattr(const char *path, struct stat *statbuf)
 		statbuf->st_size = *(meta->bytes);
 		statbuf->st_uid = getuid();
 		statbuf->st_gid = getgid();
-		statbuf ->st_atim = "access time";
-		statbuf ->st_ctim = "change time";
-		statbuf ->st_mtim = "modify time";
+		statbuf->st_atime;// = "access time";
+		statbuf->st_ctime; //= "change time";
+		statbuf->st_mtime;// = "modify time";
 
 		if (*(meta->isDir))
 		{
@@ -1164,43 +1159,40 @@ static int callback(void *NotUsed, int argc, char **argv, char **azColName){
 }
 
 //Initiating database
-int init_sqlite(){
+sqlite3* init_sqlite(){
 
-	rc = sqlite3_open_v2("dir.db", &db1, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL);
+	int rc;
+	char *zErrMsg = 0;
+
+	sqlite3 *sqlite_conn = NULL;
+	rc = sqlite3_open_v2("dir.db", &sqlite_conn, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL);
 	if( rc ){
-		fprintf(stderr, "Can't open database: %s\n", sqlite3_errmsg(db1));
-		sqlite3_close(db1);
-		return(1);
+		fprintf(stderr, "Can't open database: %s\n", sqlite3_errmsg(sqlite_conn));
+		sqlite3_close(sqlite_conn);
+		return(sqlite_conn);
 	}
 
 	// Create a table Directory for storage several metadata on the files
 	// Or on Dropbox. If table already exists, ignore the SQL.
 	char *sql = "create table if not exists DIRECTORY (full_path varchar(4000) PRIMARY KEY, parent_folder_full_path varchar(4000), entry_name varchar(255), old_full_path varchar(4000), type integer, size integer, mtime datetime, atime datetime, is_locked integer, is_modified integer, is_local integer, is_deleted integer, in_use_count integer);";
-	rc = sqlite3_exec(db1, sql, 0, 0, &zErrMsg);
+	rc = sqlite3_exec(sqlite_conn, sql, 0, 0, &zErrMsg);
 		if( rc!=SQLITE_OK ){
 			fprintf(stderr, "SQL error: %s\n", zErrMsg);
 			sqlite3_free(zErrMsg);
 		}
 	sql = "create table if not exists LOCK (dummy char(1));";
-	rc = sqlite3_exec(db1, sql, 0, 0, &zErrMsg);
-		if( rc!=SQLITE_OK ){
-			fprintf(stderr, "SQL error: %s\n", zErrMsg);
-			sqlite3_free(zErrMsg);
-		}
-		return (0);
-
+	rc = sqlite3_exec(sqlite_conn, sql, 0, 0, &zErrMsg);
+	if( rc!=SQLITE_OK ){
+		fprintf(stderr, "SQL error: %s\n", zErrMsg);
+		sqlite3_free(zErrMsg);
+	}
+	return (sqlite_conn);
 }
 
 
 
 int main(int argc, char *argv[])
 {
-	/*
-	* From LY:
-	* The below function call is just for showing how to work with sqlite.
-	* It should be removed in formal code
-	**/
-	test_sqlite();
 
     int fuse_stat;
     struct bb_state *bb_data;
@@ -1263,39 +1255,51 @@ int main(int argc, char *argv[])
 
     bb_data->client = cli;
 
+    sqlite3 *sqlite_conn = init_sqlite();
+    bb_data->sqlite_conn = sqlite_conn;
+
     // turn over control to fuse
     fprintf(stderr, "about to call fuse_main\n");
     fuse_stat = fuse_main(argc, argv, &bb_oper, bb_data);
     fprintf(stderr, "fuse_main returned %d\n", fuse_stat);
-    init_sqlite();
+
 
     return fuse_stat;
 }
 
 int update_atime(){
+
+	void* output;
+	int err;
+	int rc;
+	char *zErrMsg = 0;
+	char fpath[PATH_MAX];
+
+	sqlite3* db1 = BB_DATA->sqlite_conn;
+
 	time_t now;
-	    struct tm ts;
-	    char buf[80];
-	    time(&now);
-	    ts = *localtime(&time);
-	    strftime(buf, sizeof(buf));
-	    char* sql4 = "UPDATE Directory SET atime =";
-	    char* sql5 = "WHERE full_path =";
-	    char* sql_update_atime = (char*)malloc(1+strlen(sql4)+strlen(buf)+strlen(sql5)+strlen(fpath));
-	    strcpy(sql_update_atime, sql4);
-	    strcpy(sql_update_atime, buf);
-	    strcpy(sql_update_atime, sql5);
-	    strcpy(sql_update_atime, fpath);
+	struct tm ts;
+	char buf[80];
+	time(&now);
+	ts = *localtime(&time);
+	strftime(buf, sizeof(buf), "%a %Y-%m-%d %H:%M:%S %Z", &ts);
+	char* sql4 = "UPDATE Directory SET atime =";
+	char* sql5 = "WHERE full_path =";
+	char* sql_update_atime = (char*)malloc(1+strlen(sql4)+strlen(buf)+strlen(sql5)+strlen(fpath));
+	strcpy(sql_update_atime, sql4);
+	strcpy(sql_update_atime, buf);
+	strcpy(sql_update_atime, sql5);
+	strcpy(sql_update_atime, fpath);
 
-	   //Update on atime in Directory table
-	    rc = sqlite3_exec(db1, sql_update_atime, 0, 0, &zErrMsg);
+   //Update on atime in Directory table
+	rc = sqlite3_exec(db1, sql_update_atime, 0, 0, &zErrMsg);
 
-	               // If there's an error updating the database table, print it out.
-	                if( rc!=SQLITE_OK ){
-	                		fprintf(stderr, "SQL error: %s\n", zErrMsg);
-	                		sqlite3_free(zErrMsg);
-	                	}
-	                return (0);
+   // If there's an error updating the database table, print it out.
+	if( rc!=SQLITE_OK ){
+			fprintf(stderr, "SQL error: %s\n", zErrMsg);
+			sqlite3_free(zErrMsg);
+		}
+	return (0);
 }
 
 
