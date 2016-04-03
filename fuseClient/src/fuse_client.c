@@ -1012,6 +1012,9 @@ int ibc_getattr(const char *path, struct stat *statbuf)
 		statbuf->st_size = *(meta->bytes);
 		statbuf->st_uid = getuid();
 		statbuf->st_gid = getgid();
+		statbuf ->st_atim = "access time";
+		statbuf ->st_ctim = "change time";
+		statbuf ->st_mtim = "modify time";
 
 		if (*(meta->isDir))
 		{
