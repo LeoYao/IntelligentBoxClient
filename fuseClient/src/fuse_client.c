@@ -147,8 +147,13 @@ int bb_mknod(const char *path, mode_t mode, dev_t dev)
 /** Create a directory */
 int bb_mkdir(const char *path, mode_t mode)
 {
+	int rc;
+	char *zErrMsg = 0;
     int retstat = 0;
     char fpath[PATH_MAX];
+
+    drbClient* cli = BB_DATA->client;
+    sqlite3* db1 = BB_DATA->sqlite_conn;
 
     log_msg("\nbb_mkdir(path=\"%s\", mode=0%3o)\n",
 	    path, mode);
@@ -157,6 +162,52 @@ int bb_mkdir(const char *path, mode_t mode)
     retstat = mkdir(fpath, mode);
     if (retstat < 0)
 	retstat = bb_error("bb_mkdir mkdir");
+
+    char* parent_path;
+    char* path2 = strdup(fpath);
+    parent_path = basename(path2);
+    //Create SQL for insert new file directory information into table Directory
+    char* sql1 = "INSERT INTO Directory WITH VALUES(";
+    char* sql2 = fpath;
+    char* sql3 = ",";
+    char* sql4 = parent_path;
+    char* sql5 = "null, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0);";
+    char* sql_create_file_dir = (char*)malloc(1+strlen(sql1)+strlen(sql2)+strlen(sql3)+strlen(sql4)+strlen(sql5));
+    sql_create_file_dir = strcpy(sql_create_file_dir, sql1);
+    sql_create_file_dir = strcpy(sql_create_file_dir, sql2);
+    sql_create_file_dir = strcpy(sql_create_file_dir, sql3);
+    sql_create_file_dir = strcpy(sql_create_file_dir, sql4);
+    sql_create_file_dir = strcpy(sql_create_file_dir, sql5);
+
+    char* sql_begin = "BEGIN TRANSACTION";
+
+    //Begin transaction to database
+    rc = sqlite3_exec(db1, sql_begin, 0, 0, &zErrMsg);
+    //If SQLITE is busy, retry twice, if still busy then abort
+    for(int i=0;i<2;i++){
+        if(rc == SQLITE_BUSY){
+       		delay(50);
+       		rc = sqlite3_exec(db1, sql_begin, 0, 0, &zErrMsg);
+       	}else{
+       		break;
+       	}
+    }
+
+    // Insert into database table
+    rc = sqlite3_exec(db1, sql_create_file_dir, 0, 0, &zErrMsg);
+    if(rc != SQLITE_OK){
+     	   fprintf(stderr, "SQL error: %s\n", zErrMsg);
+     	   sqlite3_free(zErrMsg);
+        }
+
+    update_atime();
+    update_mtime();
+
+    rc = sqlite3_exec(db1, "COMMIT", 0, 0, &zErrMsg);
+    if(rc != SQLITE_OK){
+      	   fprintf(stderr, "SQL error: %s\n", zErrMsg);
+      	   sqlite3_free(zErrMsg);
+         }
 
     return retstat;
 }
@@ -892,7 +943,6 @@ int bb_create(const char *path, mode_t mode, struct fuse_file_info *fi)
 {
 	int rc;
 	char *zErrMsg = 0;
-	char fpath[PATH_MAX];
 	int retstat = 0;
     char fpath[PATH_MAX];
     int fd;
