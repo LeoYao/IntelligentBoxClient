@@ -354,10 +354,23 @@ int bb_open(const char *path, struct fuse_file_info *fi)
     strcpy(sql_search_local, sql1);
     strcpy(sql_search_local, sql2);
 
+    // Start database transaction, if it's locked retry twice, 50 millisecond interval.
+    char* sql = "BEGIN TRANSACTION;";
+    rc = sqlite3_exec(db1, sql, 0, 0, &zErrMsg);
+    		if( rc==SQLITE_BUSY ){
+    			for(int i=0; i<2; i++){
+    				delay(50);
+    			    rc = sqlite3_exec(db1, sql, 0, 0, &zErrMsg);
+    			}
+    			break;
+        	}
+
     // Executing sql statement seaching for the file to see if it's on local storage
     rc = sqlite3_exec(db1, sql_search_local, callback, &is_local, &zErrMsg);
 
     // If there's error executing the sql statement, print it out.
+
+
     if( rc!=SQLITE_OK ){
     		fprintf(stderr, "SQL error: %s\n", zErrMsg);
     		sqlite3_free(zErrMsg);
@@ -407,8 +420,18 @@ int bb_open(const char *path, struct fuse_file_info *fi)
     fi->fh = fd;
     log_fi(fi);
     }
+
+
     // Get timestamp when the file was open
     update_atime();
+
+    //Commit the changes into database table and release the lock on the database.
+	sql = "COMMIT;";
+	rc = sqlite3_exec(db1, sql_search_local, callback, &is_local, &zErrMsg);
+	if( rc!=SQLITE_OK ){
+	            		fprintf(stderr, "SQL error: %s\n", zErrMsg);
+	            		sqlite3_free(zErrMsg);
+	            	}
 
     return retstat;
 
