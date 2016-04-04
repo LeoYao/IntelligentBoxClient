@@ -355,15 +355,17 @@ int bb_open(const char *path, struct fuse_file_info *fi)
     strcpy(sql_search_local, sql2);
 
     // Start database transaction, if it's locked retry twice, 50 millisecond interval.
-    char* sql = "BEGIN TRANSACTION;";
-    rc = sqlite3_exec(db1, sql, 0, 0, &zErrMsg);
-    		if( rc==SQLITE_BUSY ){
-    			for(int i=0; i<2; i++){
-    				delay(50);
-    			    rc = sqlite3_exec(db1, sql, 0, 0, &zErrMsg);
-    			}
-    			break;
+    char* sql_begin = "BEGIN TRANSACTION;";
+    rc = sqlite3_exec(db1, sql_begin, 0, 0, &zErrMsg);
+    //If SQLITE is busy, retry twice, if still busy then abort
+        for(int i=0;i<2;i++){
+        	if(rc == SQLITE_BUSY){
+        		delay(50);
+        		rc = sqlite3_exec(db1, sql_begin, 0, 0, &zErrMsg);
+        	}else{
+        		break;
         	}
+        }
 
     // Executing sql statement seaching for the file to see if it's on local storage
     rc = sqlite3_exec(db1, sql_search_local, callback, &is_local, &zErrMsg);
@@ -426,8 +428,8 @@ int bb_open(const char *path, struct fuse_file_info *fi)
     update_atime();
 
     //Commit the changes into database table and release the lock on the database.
-	sql = "COMMIT;";
-	rc = sqlite3_exec(db1, sql_search_local, callback, &is_local, &zErrMsg);
+	char* sql_commit = "COMMIT;";
+	rc = sqlite3_exec(db1, sql_commit, callback, &is_local, &zErrMsg);
 	if( rc!=SQLITE_OK ){
 	            		fprintf(stderr, "SQL error: %s\n", zErrMsg);
 	            		sqlite3_free(zErrMsg);
@@ -435,6 +437,8 @@ int bb_open(const char *path, struct fuse_file_info *fi)
 
     return retstat;
 
+    //Free pointers
+    free(sql1, sql2, sql_search_local, sql_begin, sql_commit);
 
 
 }
@@ -492,8 +496,6 @@ int bb_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_
 int bb_write(const char *path, const char *buf, size_t size, off_t offset,
 	     struct fuse_file_info *fi)
 {
-	void* output;
-		int err;
 		int rc;
 		char *zErrMsg = 0;
 		char fpath[PATH_MAX];
@@ -518,20 +520,37 @@ int bb_write(const char *path, const char *buf, size_t size, off_t offset,
     char* sql1= "UPDATE Directory SET mtime = 1 where fill_path = ";
     char* sql2 = fpath;
     char* sql_update_mtime = (char*)malloc(1+strlen(sql1)+strlen(sql2));
+    char* sql_begin = "BEGIN TRANSACTION";
+    char* sql_commit = "COMMIT";
     strcpy(sql_update_mtime, sql1);
     strcpy(sql_update_mtime, sql2);
 
+    //Begin transaction to database
+    rc = sqlite3_exec(db1, sql_begin, 0, 0, &zErrMsg);
+    //If SQLITE is busy, retry twice, if still busy then abort
+    for(int i=0;i<2;i++){
+    	if(rc == SQLITE_BUSY){
+    		delay(50);
+    		rc = sqlite3_exec(db1, sql_begin, 0, 0, &zErrMsg);
+    	}else{
+    		break;
+    	}
+    }
+
     rc = sqlite3_exec(db1, sql_update_mtime, 0, 0, &zErrMsg);
 
-               // If there's an error updating the database table, print it out.
-                if( rc!=SQLITE_OK ){
-                		fprintf(stderr, "SQL error: %s\n", zErrMsg);
-                		sqlite3_free(zErrMsg);
-                	}
+    // If there's an error updating the database table, print it out.
+        if( rc!=SQLITE_OK ){
+           fprintf(stderr, "SQL error: %s\n", zErrMsg);
+           sqlite3_free(zErrMsg);
+                }
+
+    rc = sqlite3_exec(db1, sql_commit, 0, 0, &zErrMsg);
 
     // Get timestamp when the file was open
      update_atime();
     return retstat;
+    free(sql1, sql2, sql_update_mtime, sql_begin, sql_commit);
 }
 
 /** Get file system statistics
@@ -1292,8 +1311,6 @@ int main(int argc, char *argv[])
 
 int update_atime(){
 
-	void* output;
-	int err;
 	int rc;
 	char *zErrMsg = 0;
 	char fpath[PATH_MAX];
