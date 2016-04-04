@@ -346,6 +346,7 @@ int bb_open(const char *path, struct fuse_file_info *fi)
 	int rc;
 	char *zErrMsg = 0;
 	char fpath[PATH_MAX];
+	bb_fullpath(fpath, path);
 	int* is_local;
 
 	drbClient* cli = BB_DATA->client;
@@ -358,6 +359,7 @@ int bb_open(const char *path, struct fuse_file_info *fi)
     char* sql1 = "SELECT is_local FROM Directory WHERE full_path =";
     char* sql2 = fpath;
     char* sql_search_local = (char*)malloc(1+strlen(sql1)+strlen(sql2));
+    char* sql_commit = "COMMIT";
     strcpy(sql_search_local, sql1);
     strcpy(sql_search_local, sql2);
 
@@ -416,33 +418,38 @@ int bb_open(const char *path, struct fuse_file_info *fi)
             		fprintf(stderr, "SQL error: %s\n", zErrMsg);
             		sqlite3_free(zErrMsg);
             	}
+
+            rc = sqlite3_exec(db1, sql_commit, 0, 0, &zErrMsg);
+
+            if( rc!=SQLITE_OK){
+            	fprintf(stderr, "SQL error: %s\n", zErrMsg);
+            	            		sqlite3_free(zErrMsg);
+            }
+
         }
     }
-
-    else{
-
     // If the file is local, just open it.
+    // If the file is not local, after download it onto local storage
+    // Open the file.
     fd = open(fpath, fi->flags);
     if (fd < 0)
 	retstat = bb_error("bb_open open");
 
     fi->fh = fd;
     log_fi(fi);
-    }
+
 
 
     // Get timestamp when the file was open
     update_atime();
 
     //Commit the changes into database table and release the lock on the database.
-	char* sql_commit = "COMMIT;";
+
 	rc = sqlite3_exec(db1, sql_commit, callback, &is_local, &zErrMsg);
 	if( rc!=SQLITE_OK ){
 	            		fprintf(stderr, "SQL error: %s\n", zErrMsg);
 	            		sqlite3_free(zErrMsg);
 	            	}
-
-    return retstat;
 
     //Free pointers
     free(sql1);
@@ -450,6 +457,8 @@ int bb_open(const char *path, struct fuse_file_info *fi)
     free(sql_search_local);
     free(sql_begin);
     free(sql_commit);
+
+    return retstat;
 
 
 }
@@ -556,16 +565,24 @@ int bb_write(const char *path, const char *buf, size_t size, off_t offset,
            sqlite3_free(zErrMsg);
                 }
 
-    rc = sqlite3_exec(db1, sql_commit, 0, 0, &zErrMsg);
-
     // Get timestamp when the file was open
-     update_atime();
-    return retstat;
+    update_atime();
+    update_mtime();
+
+    //Commit the changes to database
+    rc = sqlite3_exec(db1, sql_commit, 0, 0, &zErrMsg);
+    if( rc!=SQLITE_OK ){
+    	            		fprintf(stderr, "SQL error: %s\n", zErrMsg);
+    	            		sqlite3_free(zErrMsg);
+    	            	}
+
+
     free(sql1);
     free(sql2);
     free(sql_update_is_modified);
     free(sql_begin);
     free(sql_commit);
+    return retstat;
 }
 
 /** Get file system statistics
@@ -873,13 +890,36 @@ int bb_access(const char *path, int mask)
  */
 int bb_create(const char *path, mode_t mode, struct fuse_file_info *fi)
 {
-    int retstat = 0;
+	int rc;
+	char *zErrMsg = 0;
+	char fpath[PATH_MAX];
+	int retstat = 0;
     char fpath[PATH_MAX];
     int fd;
+
+    drbClient* cli = BB_DATA->client;
+    sqlite3* db1 = BB_DATA->sqlite_conn;
 
     log_msg("\nbb_create(path=\"%s\", mode=0%03o, fi=0x%08x)\n",
 	    path, mode, fi);
     bb_fullpath(fpath, path);
+
+    char* parent_path;
+    char* path2 = strdup(fpath);
+    parent_path = basename(path2);
+    //Create SQL for insert new file directory information into table Directory
+    char* sql1 = "INSERT INTO Directory WITH VALUES(";
+    char* sql2 = fpath;
+    char* sql3 = ", parent folder path, ";
+    char* sql4 = "2, 0, 0, 0, 1, 1, 1, 0, 1, 0);";
+    char* sql_create_file_dir = (char*)malloc(1+strlen(sql1)+strlen(sql2)+strlen(sql3)+strlen(sql4));
+    sql_create_file_dir = strcpy(sql_create_file_dir, sql1);
+    sql_create_file_dir = strcpy(sql_create_file_dir, sql2);
+    sql_create_file_dir = strcpy(sql_create_file_dir, sql3);
+    sql_create_file_dir = strcpy(sql_create_file_dir, sql4);
+
+    char* sql_begin = "BEGIN TRANSACTION";
+
 
     fd = creat(fpath, mode);
     if (fd < 0)
@@ -888,6 +928,34 @@ int bb_create(const char *path, mode_t mode, struct fuse_file_info *fi)
     fi->fh = fd;
 
     log_fi(fi);
+
+    //Begin transaction to database
+    rc = sqlite3_exec(db1, sql_begin, 0, 0, &zErrMsg);
+    //If SQLITE is busy, retry twice, if still busy then abort
+    for(int i=0;i<2;i++){
+    	if(rc == SQLITE_BUSY){
+    		delay(50);
+    		rc = sqlite3_exec(db1, sql_begin, 0, 0, &zErrMsg);
+    	}else{
+    		break;
+    	}
+    }
+
+    // Insert into database table
+    rc = sqlite3_exec(db1, sql_create_file_dir, 0, 0, &zErrMsg);
+    if(rc != SQLITE_OK){
+ 	   fprintf(stderr, "SQL error: %s\n", zErrMsg);
+ 	   sqlite3_free(zErrMsg);
+    }
+
+    update_atime();
+    update_mtime();
+
+    rc = sqlite3_exec(db1, "COMMIT", 0, 0, &zErrMsg);
+    if(rc != SQLITE_OK){
+  	   fprintf(stderr, "SQL error: %s\n", zErrMsg);
+  	   sqlite3_free(zErrMsg);
+     }
 
     return retstat;
 }
