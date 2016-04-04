@@ -65,6 +65,13 @@ static void bb_fullpath(char fpath[PATH_MAX], const char *path)
 }
 
 
+//Delay method
+void delay(unsigned int mseconds)
+{
+    clock_t goal = mseconds + clock();
+    while (goal > clock());
+}
+
 /** Read the target of a symbolic link
  *
  * The buffer should be filled with a null terminated string.  The
@@ -438,7 +445,11 @@ int bb_open(const char *path, struct fuse_file_info *fi)
     return retstat;
 
     //Free pointers
-    free(sql1, sql2, sql_search_local, sql_begin, sql_commit);
+    free(sql1);
+    free(sql2);
+    free(sql_search_local);
+    free(sql_begin);
+    free(sql_commit);
 
 
 }
@@ -517,13 +528,13 @@ int bb_write(const char *path, const char *buf, size_t size, off_t offset,
     if (retstat < 0)
 	retstat = bb_error("bb_write pwrite");
 
-    char* sql1= "UPDATE Directory SET mtime = 1 where fill_path = ";
+    char* sql1= "UPDATE Directory SET is_modified = 1 WHERE full_path = ";
     char* sql2 = fpath;
-    char* sql_update_mtime = (char*)malloc(1+strlen(sql1)+strlen(sql2));
+    char* sql_update_is_modified = (char*)malloc(1+strlen(sql1)+strlen(sql2));
     char* sql_begin = "BEGIN TRANSACTION";
     char* sql_commit = "COMMIT";
-    strcpy(sql_update_mtime, sql1);
-    strcpy(sql_update_mtime, sql2);
+    strcpy(sql_update_is_modified, sql1);
+    strcpy(sql_update_is_modified, sql2);
 
     //Begin transaction to database
     rc = sqlite3_exec(db1, sql_begin, 0, 0, &zErrMsg);
@@ -537,7 +548,7 @@ int bb_write(const char *path, const char *buf, size_t size, off_t offset,
     	}
     }
 
-    rc = sqlite3_exec(db1, sql_update_mtime, 0, 0, &zErrMsg);
+    rc = sqlite3_exec(db1, sql_update_is_modified, 0, 0, &zErrMsg);
 
     // If there's an error updating the database table, print it out.
         if( rc!=SQLITE_OK ){
@@ -550,7 +561,11 @@ int bb_write(const char *path, const char *buf, size_t size, off_t offset,
     // Get timestamp when the file was open
      update_atime();
     return retstat;
-    free(sql1, sql2, sql_update_mtime, sql_begin, sql_commit);
+    free(sql1);
+    free(sql2);
+    free(sql_update_is_modified);
+    free(sql_begin);
+    free(sql_commit);
 }
 
 /** Get file system statistics
@@ -1216,7 +1231,7 @@ sqlite3* init_sqlite(){
 
 	// Create a table Directory for storage several metadata on the files
 	// Or on Dropbox. If table already exists, ignore the SQL.
-	char *sql = "create table if not exists DIRECTORY (full_path varchar(4000) PRIMARY KEY, parent_folder_full_path varchar(4000), entry_name varchar(255), old_full_path varchar(4000), type integer, size integer, mtime datetime, atime datetime, is_locked integer, is_modified integer, is_local integer, is_deleted integer, in_use_count integer);";
+	char *sql = "create table if not exists DIRECTORY (full_path varchar(4000) PRIMARY KEY, parent_folder_full_path varchar(4000), entry_name varchar(255), old_full_path varchar(4000), type integer, size integer, mtime datetime, atime datetime, is_locked integer, is_modified integer, is_local integer, is_deleted integer, in_use_count integer, revision string);";
 	rc = sqlite3_exec(sqlite_conn, sql, 0, 0, &zErrMsg);
 		if( rc!=SQLITE_OK ){
 			fprintf(stderr, "SQL error: %s\n", zErrMsg);
@@ -1341,5 +1356,39 @@ int update_atime(){
 		}
 	return (0);
 }
+
+int update_mtime(){
+	int rc=0;
+	char* zErrMsg = 0;
+	char* fpath[PATH_MAX];
+
+	sqlite3* db1 = BB_DATA->sqlite_conn;
+
+	time_t now;
+		struct tm ts;
+		char buf[80];
+		time(&now);
+		ts = *localtime(&time);
+		strftime(buf, sizeof(buf), "%a %Y-%m-%d %H:%M:%S %Z", &ts);
+		char* sql4 = "UPDATE Directory SET mtime =";
+		char* sql5 = "WHERE full_path =";
+		char* sql_update_atime = (char*)malloc(1+strlen(sql4)+strlen(buf)+strlen(sql5)+strlen(fpath));
+		strcpy(sql_update_atime, sql4);
+		strcpy(sql_update_atime, buf);
+		strcpy(sql_update_atime, sql5);
+		strcpy(sql_update_atime, fpath);
+		//Update on atime in Directory table
+		rc = sqlite3_exec(db1, sql_update_atime, 0, 0, &zErrMsg);
+
+		// If there's an error updating the database table, print it out.
+		if( rc!=SQLITE_OK ){
+				fprintf(stderr, "SQL error: %s\n", zErrMsg);
+				sqlite3_free(zErrMsg);
+			}
+		return (0);
+}
+
+
+
 
 
