@@ -1067,19 +1067,121 @@ int bb_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset
 	       struct fuse_file_info *fi)
 {
 
+
 	log_msg("\nbb_readdir: %s\n", path);
 
 	drbMetadata* meta = (drbMetadata*)fi->fh;
+
+	int rc;
+	char *zErrMsg = 0;
+
+	time_t now;
+		struct tm ts;
+		char buff[80];
+		time(&now);
+		ts = *localtime(&time);
+		strftime(buff, sizeof(buf), "%a %Y-%m-%d %H:%M:%S %Z", &ts);
+
+		char* sql_begin = "BEGIN TRANSACTION";
+		drbClient* cli = BB_DATA->client;
+		sqlite3* db1 = BB_DATA->sqlite_conn;
+
+		    //Begin transaction to database
+		    rc = sqlite3_exec(db1, sql_begin, 0, 0, &zErrMsg);
+		    //If SQLITE is busy, retry twice, if still busy then abort
+		    for(int i=0;i<2;i++){
+		        if(rc == SQLITE_BUSY){
+		       		delay(50);
+		       		rc = sqlite3_exec(db1, sql_begin, 0, 0, &zErrMsg);
+		       	}else{
+		       		break;
+		       	}
+		    }
+		    // If after 2 tries and if still cannot start the transaction
+		    // Just abort
+
+	// Get all the file's metadata in this dir and store them into Database
+	// One on one
 	for (int i = 0; i < meta->contents->size; i++) {
 		drbMetadata* entry = meta->contents->array[i];
+
+		//Get all the values needed for the database table
+		int* type;
+		int* is_modified;
+		unsigned int* revision;
+		char* full_path;
+		int* is_deleted;
+		char* size;
+		char* parent_folder;
+		char *basename(full_path);
+
+		//Prepair the SQL statement
+		char* sql1= "INSERT INTO Directory WITH VALUES(";
+		char* sql2 = ", ";
+
+
+
+		is_modified = entry->modified;
+		full_path = entry->path;
+		is_deleted = entry->isDeleted;
+		size = entry->size;
+		parent_folder = entry->root;
+		revision = entry->revision;
+
+		if(entry->isDir == 1){
+			type = 1;
+		}else{
+			type = 2;
+		}
+
+		//Construct SQL statement
+		char* sql_insert_dir;
+		strcpy(sql_insert_dir, sql1);
+		strcpy(sql_insert_dir, full_path);
+		strcpy(sql_insert_dir, sql2);
+		strcpy(sql_insert_dir, "null");
+		strcpy(sql_insert_dir, sql2);
+		strcpy(sql_insert_dir, parent_folder);
+		strcpy(sql_insert_dir, sql2);
+		strcpy(sql_insert_dir, type);
+		strcpy(sql_insert_dir, sql2);
+		strcpy(sql_insert_dir, size);
+		strcpy(sql_insert_dir, sql2);
+		strcpy(sql_insert_dir, "null, null");
+		strcpy(sql_insert_dir, sql2);
+		strcpy(sql_insert_dir, "0, ");
+		strcpy(sql_insert_dir, is_modified);
+		strcpy(sql_insert_dir, sql2);
+		strcpy(sql_insert_dir, "0, ");
+		strcpy(sql_insert_dir, is_deleted);
+		strcpy(sql_insert_dir, sql2);
+		strcpy(sql_insert_dir, "0, ");
+		strcpy(sql_insert_dir, revision);
+		strcpy(sql_insert_dir, ");");
+
+		rc = sqlite3_exec(db1, sql_insert_dir, 0, 0, &zErrMsg);
+
+		if( rc!=SQLITE_OK ){
+		           fprintf(stderr, "SQL error: %s\n", zErrMsg);
+		           sqlite3_free(zErrMsg);
+		                }
+
 		int lastSlashPos = getLastSlashPosition(entry->path);
 		if (filler(buf, entry->path + lastSlashPos, NULL, 0) != 0) {
 				log_msg("    ERROR bb_readdir filler:  buffer full\n");
 				return -ENOMEM;
 		}
-		log_msg("bb_readdir - filler: %s.\n", entry->path + lastSlashPos);
-	}
 
+
+		log_msg("bb_readdir - filler: %s.\n", entry->path + lastSlashPos);
+
+				                }
+
+	rc = sqlite3_exec(db1, "Commit;", 0, 0, &zErrMsg);
+	if( rc!=SQLITE_OK ){
+		fprintf(stderr, "SQL error: %s\n", zErrMsg);
+		sqlite3_free(zErrMsg);
+	}
 	drbDestroyMetadata(meta, true);
 
 	return 0;
