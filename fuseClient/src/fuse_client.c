@@ -1075,7 +1075,7 @@ int bb_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset
 	int rc;
 	char *zErrMsg = 0;
 
-	time_t now;
+		time_t now;
 		struct tm ts;
 		char buff[80];
 		time(&now);
@@ -1106,6 +1106,7 @@ int bb_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset
 		drbMetadata* entry = meta->contents->array[i];
 
 		//Get all the values needed for the database table
+		char* mtime;
 		int* type;
 		int* is_modified;
 		unsigned int* revision;
@@ -1127,6 +1128,7 @@ int bb_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset
 		size = entry->size;
 		parent_folder = entry->root;
 		revision = entry->revision;
+		mtime = entry->clientMtime;
 
 		if(entry->isDir == 1){
 			type = 1;
@@ -1139,7 +1141,7 @@ int bb_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset
 		strcpy(sql_insert_dir, sql1);
 		strcpy(sql_insert_dir, full_path);
 		strcpy(sql_insert_dir, sql2);
-		strcpy(sql_insert_dir, "null");
+		strcpy(sql_insert_dir, basename);
 		strcpy(sql_insert_dir, sql2);
 		strcpy(sql_insert_dir, parent_folder);
 		strcpy(sql_insert_dir, sql2);
@@ -1147,7 +1149,9 @@ int bb_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset
 		strcpy(sql_insert_dir, sql2);
 		strcpy(sql_insert_dir, size);
 		strcpy(sql_insert_dir, sql2);
-		strcpy(sql_insert_dir, "null, null");
+		strcpy(sql_insert_dir, mtime);
+		strcpy(sql_insert_dir, sql2);
+		strcpy(sql_insert_dir, mtime);
 		strcpy(sql_insert_dir, sql2);
 		strcpy(sql_insert_dir, "0, ");
 		strcpy(sql_insert_dir, is_modified);
