@@ -151,6 +151,7 @@ int bb_mkdir(const char *path, mode_t mode)
 	char *zErrMsg = 0;
     int retstat = 0;
     char fpath[PATH_MAX];
+    bb_fullpath(fpath, path);
 
     drbClient* cli = BB_DATA->client;
     sqlite3* db1 = BB_DATA->sqlite_conn;
@@ -1283,14 +1284,43 @@ int ibc_getattr(const char *path, struct stat *statbuf)
 		log_msg("Metadata error (%d): %s\n", err, (char*)output);
 		free(output);
 	} else {
+
+		drbClient* cli = BB_DATA->client;
+		sqlite3* db1 = BB_DATA->sqlite_conn;
+		char fpath[PATH_MAX];
+		bb_fullpath(fpath, path);
+		int rc;
+		char *zErrMsg = 0;
+		char* mtime;
+		 //Begin transaction to database
+		rc = sqlite3_exec(db1, "BEGIN TRANSACTION", 0, 0, &zErrMsg);
+		//If SQLITE is busy, retry twice, if still busy then abort
+			for(int i=0;i<2;i++){
+				if(rc == SQLITE_BUSY){
+					delay(50);
+					rc = sqlite3_exec(db1, "BEGIN TRANSACTION", 0, 0, &zErrMsg);
+				 	 }else{
+				 		 break;
+				     }
+			 }
+		char* sql1 = "SELECT mtime FROM Directory WHERE full_path=";
+		char* sql2 =";";
+		char* sql_get_mtime;
+		strcpy(sql_get_mtime, sql1);
+		strcpy(sql_get_mtime, fpath);
+		strcpy(sql_get_mtime, sql2);
+
+		rc = sqlite3_exec(db1, sql_get_mtime, callback, &mtime, &zErrMsg);
+
+
 		drbMetadata* meta = (drbMetadata*)output;
 		//displayMetadata(meta, "Metadata");
 		statbuf->st_size = *(meta->bytes);
 		statbuf->st_uid = getuid();
 		statbuf->st_gid = getgid();
-		statbuf->st_atime;// = "access time";
-		statbuf->st_ctime; //= "change time";
-		statbuf->st_mtime;// = "modify time";
+		statbuf->st_atime = mtime;// = "access time";
+		statbuf->st_ctime = mtime; //= "change time";
+		statbuf->st_mtime = mtime;// = "modify time";
 
 		if (*(meta->isDir))
 		{
