@@ -72,6 +72,75 @@ void delay(unsigned int mseconds)
     while (goal > clock());
 }
 
+void update_atime(const char *path){
+
+	int rc;
+	char *zErrMsg = 0;
+	char fpath[PATH_MAX];
+	bb_fullpath(fpath, path);
+
+
+	sqlite3* db1 = BB_DATA->sqlite_conn;
+
+	time_t now;
+	struct tm ts;
+	char buf[80];
+	time(&now);
+	ts = *localtime(&time);
+	strftime(buf, sizeof(buf), "%a %Y-%m-%d %H:%M:%S %Z", &ts);
+	char* sql4 = "UPDATE Directory SET atime =";
+	char* sql5 = "WHERE full_path =";
+	char* sql_update_atime = (char*)malloc(1+strlen(sql4)+strlen(buf)+strlen(sql5)+strlen(fpath));
+	strcpy(sql_update_atime, sql4);
+	strcpy(sql_update_atime, buf);
+	strcpy(sql_update_atime, sql5);
+	strcpy(sql_update_atime, fpath);
+
+   //Update on atime in Directory table
+	rc = sqlite3_exec(db1, sql_update_atime, 0, 0, &zErrMsg);
+
+   // If there's an error updating the database table, print it out.
+	if( rc!=SQLITE_OK ){
+			fprintf(stderr, "SQL error: %s\n", zErrMsg);
+			sqlite3_free(zErrMsg);
+		}
+//	return (0);
+}
+
+void update_mtime(const char *path){
+	int rc=0;
+	char* zErrMsg = 0;
+	char fpath[PATH_MAX];
+	bb_fullpath(fpath, path);
+
+
+	sqlite3* db1 = BB_DATA->sqlite_conn;
+
+	time_t now;
+		struct tm ts;
+		char buf[80];
+		time(&now);
+		ts = *localtime(&time);
+		strftime(buf, sizeof(buf), "%a %Y-%m-%d %H:%M:%S %Z", &ts);
+		char* sql4 = "UPDATE Directory SET mtime =";
+		char* sql5 = "WHERE full_path =";
+		char* sql_update_atime = (char*)malloc(1+strlen(sql4)+strlen(buf)+strlen(sql5)+strlen(fpath));
+		strcpy(sql_update_atime, sql4);
+		strcpy(sql_update_atime, buf);
+		strcpy(sql_update_atime, sql5);
+		strcpy(sql_update_atime, fpath);
+		//Update on atime in Directory table
+		rc = sqlite3_exec(db1, sql_update_atime, 0, 0, &zErrMsg);
+
+		// If there's an error updating the database table, print it out.
+		if( rc!=SQLITE_OK ){
+				fprintf(stderr, "SQL error: %s\n", zErrMsg);
+				sqlite3_free(zErrMsg);
+			}
+//		return (0);
+
+}
+
 /** Read the target of a symbolic link
  *
  * The buffer should be filled with a null terminated string.  The
@@ -153,7 +222,7 @@ int bb_mkdir(const char *path, mode_t mode)
     char fpath[PATH_MAX];
     bb_fullpath(fpath, path);
 
-    drbClient* cli = BB_DATA->client;
+//    drbClient* cli = BB_DATA->client;
     sqlite3* db1 = BB_DATA->sqlite_conn;
 
     log_msg("\nbb_mkdir(path=\"%s\", mode=0%3o)\n",
@@ -201,8 +270,8 @@ int bb_mkdir(const char *path, mode_t mode)
      	   sqlite3_free(zErrMsg);
         }
 
-    update_atime();
-    update_mtime();
+    update_atime(fpath);
+    update_mtime(fpath);
 
     rc = sqlite3_exec(db1, "COMMIT", 0, 0, &zErrMsg);
     if(rc != SQLITE_OK){
@@ -493,7 +562,7 @@ int bb_open(const char *path, struct fuse_file_info *fi)
 
 
     // Get timestamp when the file was open
-    update_atime();
+    update_atime(fpath);
 
     //Commit the changes into database table and release the lock on the database.
 
@@ -504,11 +573,9 @@ int bb_open(const char *path, struct fuse_file_info *fi)
 	            	}
 
     //Free pointers
-    free(sql1);
-    free(sql2);
+
     free(sql_search_local);
-    free(sql_begin);
-    free(sql_commit);
+
 
     return retstat;
 
@@ -547,7 +614,7 @@ int bb_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_
 	retstat = bb_error("bb_read read");
 
     // Get timestamp when the file was open
-    update_atime();
+    update_atime(fpath);
 
     return retstat;
 
@@ -572,7 +639,7 @@ int bb_write(const char *path, const char *buf, size_t size, off_t offset,
 		char *zErrMsg = 0;
 		char fpath[PATH_MAX];
 
-		drbClient* cli = BB_DATA->client;
+//		drbClient* cli = BB_DATA->client;
 		sqlite3* db1 = BB_DATA->sqlite_conn;
 
     int retstat = 0;
@@ -618,8 +685,8 @@ int bb_write(const char *path, const char *buf, size_t size, off_t offset,
                 }
 
     // Get timestamp when the file was open
-    update_atime();
-    update_mtime();
+    update_atime(fpath);
+    update_mtime(fpath);
 
     //Commit the changes to database
     rc = sqlite3_exec(db1, sql_commit, 0, 0, &zErrMsg);
@@ -629,11 +696,9 @@ int bb_write(const char *path, const char *buf, size_t size, off_t offset,
     	            	}
 
 
-    free(sql1);
-    free(sql2);
+
     free(sql_update_is_modified);
-    free(sql_begin);
-    free(sql_commit);
+
     return retstat;
 }
 
@@ -948,7 +1013,7 @@ int bb_create(const char *path, mode_t mode, struct fuse_file_info *fi)
     char fpath[PATH_MAX];
     int fd;
 
-    drbClient* cli = BB_DATA->client;
+//    drbClient* cli = BB_DATA->client;
     sqlite3* db1 = BB_DATA->sqlite_conn;
 
     log_msg("\nbb_create(path=\"%s\", mode=0%03o, fi=0x%08x)\n",
@@ -961,11 +1026,13 @@ int bb_create(const char *path, mode_t mode, struct fuse_file_info *fi)
     //Create SQL for insert new file directory information into table Directory
     char* sql1 = "INSERT INTO Directory WITH VALUES(";
     char* sql2 = fpath;
-    char* sql3 = ", parent folder path, ";
+    char* sql3 = ", ";
     char* sql4 = "2, 0, 0, 0, 1, 1, 1, 0, 1, 0);";
     char* sql_create_file_dir = (char*)malloc(1+strlen(sql1)+strlen(sql2)+strlen(sql3)+strlen(sql4));
     sql_create_file_dir = strcpy(sql_create_file_dir, sql1);
     sql_create_file_dir = strcpy(sql_create_file_dir, sql2);
+    sql_create_file_dir = strcpy(sql_create_file_dir, sql3);
+    sql_create_file_dir = strcpy(sql_create_file_dir, parent_path);
     sql_create_file_dir = strcpy(sql_create_file_dir, sql3);
     sql_create_file_dir = strcpy(sql_create_file_dir, sql4);
 
@@ -999,8 +1066,8 @@ int bb_create(const char *path, mode_t mode, struct fuse_file_info *fi)
  	   sqlite3_free(zErrMsg);
     }
 
-    update_atime();
-    update_mtime();
+    update_atime(fpath);
+    update_mtime(fpath);
 
     rc = sqlite3_exec(db1, "COMMIT", 0, 0, &zErrMsg);
     if(rc != SQLITE_OK){
@@ -1084,7 +1151,7 @@ int bb_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset
 		strftime(buff, sizeof(buf), "%a %Y-%m-%d %H:%M:%S %Z", &ts);
 
 		char* sql_begin = "BEGIN TRANSACTION";
-		drbClient* cli = BB_DATA->client;
+//		drbClient* cli = BB_DATA->client;
 		sqlite3* db1 = BB_DATA->sqlite_conn;
 
 		    //Begin transaction to database
@@ -1108,14 +1175,16 @@ int bb_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset
 
 		//Get all the values needed for the database table
 		char* mtime;
-		int* type;
-		int* is_modified;
-		unsigned int* revision;
-		char* full_path;
-		int* is_deleted;
+		char* type;
+		char *is_modified;
+		char* revision;
+		char *fpath = malloc(sizeof(*fpath));
+		bb_fullpath(fpath, path);
+		char *is_deleted;
 		char* size;
 		char* parent_folder;
-		char *basename(full_path);
+		char* filename;
+		char* basename(fpath);
 
 		//Prepair the SQL statement
 		char* sql1= "INSERT INTO Directory WITH VALUES(";
@@ -1124,25 +1193,26 @@ int bb_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset
 
 
 		is_modified = entry->modified;
-		full_path = entry->path;
+		fpath = entry->path;
 		is_deleted = entry->isDeleted;
 		size = entry->size;
 		parent_folder = entry->root;
 		revision = entry->revision;
 		mtime = entry->clientMtime;
 
-		if(entry->isDir == 1){
-			type = 1;
+
+		if(*entry->isDir == 1){
+			type = "1";
 		}else{
-			type = 2;
+			type = "2";
 		}
 
 		//Construct SQL statement
-		char* sql_insert_dir;
+		char* sql_insert_dir=malloc(sizeof(sql_insert_dir));;
 		strcpy(sql_insert_dir, sql1);
-		strcpy(sql_insert_dir, full_path);
+		strcpy(sql_insert_dir, fpath);
 		strcpy(sql_insert_dir, sql2);
-		strcpy(sql_insert_dir, basename);
+		strcpy(sql_insert_dir, filename);
 		strcpy(sql_insert_dir, sql2);
 		strcpy(sql_insert_dir, parent_folder);
 		strcpy(sql_insert_dir, sql2);
@@ -1165,6 +1235,7 @@ int bb_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset
 		strcpy(sql_insert_dir, ");");
 
 		rc = sqlite3_exec(db1, sql_insert_dir, 0, 0, &zErrMsg);
+		log_msg("\nsql_insert_dir: %s\n", sql_insert_dir);
 
 		if( rc!=SQLITE_OK ){
 		           fprintf(stderr, "SQL error: %s\n", zErrMsg);
@@ -1285,13 +1356,13 @@ int ibc_getattr(const char *path, struct stat *statbuf)
 		free(output);
 	} else {
 
-		drbClient* cli = BB_DATA->client;
+//		drbClient* cli = BB_DATA->client;
 		sqlite3* db1 = BB_DATA->sqlite_conn;
 		char fpath[PATH_MAX];
 		bb_fullpath(fpath, path);
 		int rc;
 		char *zErrMsg = 0;
-		char* mtime;
+		char mtime;
 		 //Begin transaction to database
 		rc = sqlite3_exec(db1, "BEGIN TRANSACTION", 0, 0, &zErrMsg);
 		//If SQLITE is busy, retry twice, if still busy then abort
@@ -1305,7 +1376,7 @@ int ibc_getattr(const char *path, struct stat *statbuf)
 			 }
 		char* sql1 = "SELECT mtime FROM Directory WHERE full_path=";
 		char* sql2 =";";
-		char* sql_get_mtime;
+		char* sql_get_mtime =malloc(sizeof(sql_get_mtime));
 		strcpy(sql_get_mtime, sql1);
 		strcpy(sql_get_mtime, fpath);
 		strcpy(sql_get_mtime, sql2);
@@ -1321,7 +1392,7 @@ int ibc_getattr(const char *path, struct stat *statbuf)
 		statbuf->st_atime = mtime;// = "access time";
 		statbuf->st_ctime = mtime; //= "change time";
 		statbuf->st_mtime = mtime;// = "modify time";
-
+		log_msg("\nget mtime: %s\n", mtime);
 		if (*(meta->isDir))
 		{
 			statbuf->st_mode = S_IFDIR | 0755;
@@ -1486,6 +1557,7 @@ sqlite3* init_sqlite(){
 	// Create a table Directory for storage several metadata on the files
 	// Or on Dropbox. If table already exists, ignore the SQL.
 	char *sql = "create table if not exists DIRECTORY (full_path varchar(4000) PRIMARY KEY, parent_folder_full_path varchar(4000), entry_name varchar(255), old_full_path varchar(4000), type integer, size integer, mtime datetime, atime datetime, is_locked integer, is_modified integer, is_local integer, is_deleted integer, in_use_count integer, revision string);";
+	log_msg("\ncreate_db: %s\n", sql);
 	rc = sqlite3_exec(sqlite_conn, sql, 0, 0, &zErrMsg);
 		if( rc!=SQLITE_OK ){
 			fprintf(stderr, "SQL error: %s\n", zErrMsg);
@@ -1566,6 +1638,7 @@ int main(int argc, char *argv[])
 
     bb_data->client = cli;
 
+
     sqlite3 *sqlite_conn = init_sqlite();
     bb_data->sqlite_conn = sqlite_conn;
 
@@ -1575,72 +1648,13 @@ int main(int argc, char *argv[])
     fprintf(stderr, "fuse_main returned %d\n", fuse_stat);
 
 
+
+
+
     return fuse_stat;
 }
 
-int update_atime(){
 
-	int rc;
-	char *zErrMsg = 0;
-	char fpath[PATH_MAX];
-
-	sqlite3* db1 = BB_DATA->sqlite_conn;
-
-	time_t now;
-	struct tm ts;
-	char buf[80];
-	time(&now);
-	ts = *localtime(&time);
-	strftime(buf, sizeof(buf), "%a %Y-%m-%d %H:%M:%S %Z", &ts);
-	char* sql4 = "UPDATE Directory SET atime =";
-	char* sql5 = "WHERE full_path =";
-	char* sql_update_atime = (char*)malloc(1+strlen(sql4)+strlen(buf)+strlen(sql5)+strlen(fpath));
-	strcpy(sql_update_atime, sql4);
-	strcpy(sql_update_atime, buf);
-	strcpy(sql_update_atime, sql5);
-	strcpy(sql_update_atime, fpath);
-
-   //Update on atime in Directory table
-	rc = sqlite3_exec(db1, sql_update_atime, 0, 0, &zErrMsg);
-
-   // If there's an error updating the database table, print it out.
-	if( rc!=SQLITE_OK ){
-			fprintf(stderr, "SQL error: %s\n", zErrMsg);
-			sqlite3_free(zErrMsg);
-		}
-	return (0);
-}
-
-int update_mtime(){
-	int rc=0;
-	char* zErrMsg = 0;
-	char* fpath[PATH_MAX];
-
-	sqlite3* db1 = BB_DATA->sqlite_conn;
-
-	time_t now;
-		struct tm ts;
-		char buf[80];
-		time(&now);
-		ts = *localtime(&time);
-		strftime(buf, sizeof(buf), "%a %Y-%m-%d %H:%M:%S %Z", &ts);
-		char* sql4 = "UPDATE Directory SET mtime =";
-		char* sql5 = "WHERE full_path =";
-		char* sql_update_atime = (char*)malloc(1+strlen(sql4)+strlen(buf)+strlen(sql5)+strlen(fpath));
-		strcpy(sql_update_atime, sql4);
-		strcpy(sql_update_atime, buf);
-		strcpy(sql_update_atime, sql5);
-		strcpy(sql_update_atime, fpath);
-		//Update on atime in Directory table
-		rc = sqlite3_exec(db1, sql_update_atime, 0, 0, &zErrMsg);
-
-		// If there's an error updating the database table, print it out.
-		if( rc!=SQLITE_OK ){
-				fprintf(stderr, "SQL error: %s\n", zErrMsg);
-				sqlite3_free(zErrMsg);
-			}
-		return (0);
-}
 
 
 
