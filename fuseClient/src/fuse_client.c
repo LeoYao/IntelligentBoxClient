@@ -1214,7 +1214,7 @@ int bb_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset
 		}
 
 		//Construct SQL statement
-		char* sql_insert_dir=
+		char* sql_insert_dir="";
 //				(char*)malloc(30+strlen(sql1)+strlen(sql2)*9+strlen(fpath)+strlen(basename)+strlen(parent_folder)+strlen(type)+strlen(size)+strlen(mtime)*2);;
 		strncpy(sql_insert_dir, sql1, strlen(sql1)+1);
 		strncpy(sql_insert_dir, fpath, strlen(fpath)+1);
@@ -1656,15 +1656,5 @@ int main(int argc, char *argv[])
     fprintf(stderr, "fuse_main returned %d\n", fuse_stat);
 
 
-
-
-
     return fuse_stat;
 }
-
-
-
-
-
-
-
