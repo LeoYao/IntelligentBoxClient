@@ -36,6 +36,7 @@
 
 
 static int callback(void *NotUsed, int argc, char **argv, char **azColName);
+sqlite3* init_sqlite();
 
 // Report errors to logfile and give -errno to caller
 static int bb_error(char *str)
@@ -949,6 +950,9 @@ void *bb_init(struct fuse_conn_info *conn)
     log_conn(conn);
     log_fuse_context(fuse_get_context());
 
+    sqlite3 *sqlite_conn = init_sqlite();
+    BB_DATA->sqlite_conn = sqlite_conn;
+
     return BB_DATA;
 }
 
@@ -1645,10 +1649,6 @@ int main(int argc, char *argv[])
     bb_data->logfile = log_open();
 
     bb_data->client = cli;
-
-
-    sqlite3 *sqlite_conn = init_sqlite();
-    bb_data->sqlite_conn = sqlite_conn;
 
     // turn over control to fuse
     fprintf(stderr, "about to call fuse_main\n");
