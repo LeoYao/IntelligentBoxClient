@@ -90,11 +90,12 @@ void update_atime(const char *path){
 	strftime(buf, sizeof(buf), "%a %Y-%m-%d %H:%M:%S %Z", &ts);
 	char* sql4 = "UPDATE Directory SET atime =";
 	char* sql5 = "WHERE full_path =";
-	char* sql_update_atime = (char*)malloc(5+strlen(sql4)+strlen(buf)+strlen(sql5)+strlen(fpath));
-	strcpy(sql_update_atime, sql4);
-	strcpy(sql_update_atime, buf);
-	strcpy(sql_update_atime, sql5);
-	strcpy(sql_update_atime, fpath);
+	char* sql_update_atime = "";
+//			(char*)malloc(5+strlen(sql4)+strlen(buf)+strlen(sql5)+strlen(fpath));
+	strncpy(sql_update_atime, sql4, strlen(sql4)+1);
+	strncpy(sql_update_atime, buf, strlen(buf)+1);
+	strncpy(sql_update_atime, sql5, strlen(sql5)+1);
+	strncpy(sql_update_atime, fpath, strlen(fpath)+1);
 
    //Update on atime in Directory table
 	rc = sqlite3_exec(db1, sql_update_atime, 0, 0, &zErrMsg);
@@ -124,11 +125,12 @@ void update_mtime(const char *path){
 		strftime(buf, sizeof(buf), "%a %Y-%m-%d %H:%M:%S %Z", &ts);
 		char* sql4 = "UPDATE Directory SET mtime =";
 		char* sql5 = "WHERE full_path =";
-		char* sql_update_mtime =  (char*)malloc(5+strlen(sql4)+strlen(buf)+strlen(sql5)+strlen(fpath));
-		strcpy(sql_update_mtime, sql4);
-		strcpy(sql_update_mtime, buf);
-		strcpy(sql_update_mtime, sql5);
-		strcpy(sql_update_mtime, fpath);
+		char* sql_update_mtime = "";
+				//(char*)malloc(5+strlen(sql4)+strlen(buf)+strlen(sql5)+strlen(fpath));
+		strncpy(sql_update_mtime, sql4, strlen(sql4)+1);
+		strncpy(sql_update_mtime, buf, strlen(buf)+1);
+		strncpy(sql_update_mtime, sql5, strlen(sql5)+1);
+		strncpy(sql_update_mtime, fpath, strlen(fpath)+1);
 		//Update on atime in Directory table
 		rc = sqlite3_exec(db1, sql_update_mtime, 0, 0, &zErrMsg);
 
@@ -242,12 +244,13 @@ int bb_mkdir(const char *path, mode_t mode)
     char* sql3 = ",";
     char* sql4 = parent_path;
     char* sql5 = "null, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0);";
-    char* sql_create_file_dir = (char*)malloc(strlen(sql1)+strlen(sql2)+strlen(sql3)+strlen(sql4)+strlen(sql5));
-    sql_create_file_dir = strcpy(sql_create_file_dir, sql1);
-    sql_create_file_dir = strcpy(sql_create_file_dir, sql2);
-    sql_create_file_dir = strcpy(sql_create_file_dir, sql3);
-    sql_create_file_dir = strcpy(sql_create_file_dir, sql4);
-    sql_create_file_dir = strcpy(sql_create_file_dir, sql5);
+    char* sql_create_file_dir = "";
+//    		(char*)malloc(strlen(sql1)+strlen(sql2)+strlen(sql3)+strlen(sql4)+strlen(sql5));
+    sql_create_file_dir = strncpy(sql_create_file_dir, sql1, strlen(sql1)+1);
+    sql_create_file_dir = strncpy(sql_create_file_dir, sql2, strlen(sql2)+1);
+    sql_create_file_dir = strncpy(sql_create_file_dir, sql3, strlen(sql3)+1);
+    sql_create_file_dir = strncpy(sql_create_file_dir, sql4, strlen(sql4)+1);
+    sql_create_file_dir = strncpy(sql_create_file_dir, sql5, strlen(sql5)+1);
 
     char* sql_begin = "BEGIN TRANSACTION";
 
@@ -479,10 +482,11 @@ int bb_open(const char *path, struct fuse_file_info *fi)
     //Prepare the sql statement
     char* sql1 = "SELECT is_local FROM Directory WHERE full_path =";
     char* sql2 = fpath;
-    char* sql_search_local = (char*)malloc(5+strlen(sql1)+strlen(sql2));
+    char* sql_search_local ="";
+//    		(char*)malloc(5+strlen(sql1)+strlen(sql2));
     char* sql_commit = "COMMIT";
-    strcpy(sql_search_local, sql1);
-    strcpy(sql_search_local, sql2);
+    strncpy(sql_search_local, sql1, strlen(sql1)+1);
+    strncpy(sql_search_local, sql2, strlen(sql2)+1);
 
     // Start database transaction, if it's locked retry twice, 50 millisecond interval.
     char* sql_begin = "BEGIN TRANSACTION;";
@@ -529,9 +533,10 @@ int bb_open(const char *path, struct fuse_file_info *fi)
             displayMetadata(output, "Get File Result");
             drbDestroyMetadata(output, true);
             char* sql3 = "UPDATE Directory SET is_local=1 WHERE full_path=";
-            char* sql_update_local= (char*)malloc(5+strlen(sql3)+strlen(fpath));
-            strcpy(sql_update_local, sql3);
-            strcpy(sql_update_local, fpath);
+            char* sql_update_local= "";
+//            		(char*)malloc(5+strlen(sql3)+strlen(fpath));
+            strncpy(sql_update_local, sql3, strlen(sql3)+1);
+            strncpy(sql_update_local, fpath, strlen(fpath)+1);
             rc = sqlite3_exec(db1, sql_update_local, 0, 0, &zErrMsg);
 
            // If there's an error updating the database table, print it out.
@@ -574,7 +579,7 @@ int bb_open(const char *path, struct fuse_file_info *fi)
 
     //Free pointers
 
-    free(sql_search_local);
+
 
 
     return retstat;
@@ -658,11 +663,12 @@ int bb_write(const char *path, const char *buf, size_t size, off_t offset,
 
     char* sql1= "UPDATE Directory SET is_modified = 1 WHERE full_path = ";
     char* sql2 = fpath;
-    char* sql_update_is_modified = (char*)malloc(5+strlen(sql1)+strlen(sql2));
+    char* sql_update_is_modified = "";
+//    		(char*)malloc(5+strlen(sql1)+strlen(sql2));
     char* sql_begin = "BEGIN TRANSACTION";
     char* sql_commit = "COMMIT";
-    strcpy(sql_update_is_modified, sql1);
-    strcpy(sql_update_is_modified, sql2);
+    strncpy(sql_update_is_modified, sql1, strlen(sql1)+1);
+    strncpy(sql_update_is_modified, sql2, strlen(sql2)+1);
 
     //Begin transaction to database
     rc = sqlite3_exec(db1, sql_begin, 0, 0, &zErrMsg);
@@ -697,7 +703,7 @@ int bb_write(const char *path, const char *buf, size_t size, off_t offset,
 
 
 
-    free(sql_update_is_modified);
+//    free(sql_update_is_modified);
 
     return retstat;
 }
@@ -1028,13 +1034,14 @@ int bb_create(const char *path, mode_t mode, struct fuse_file_info *fi)
     char* sql2 = fpath;
     char* sql3 = ", ";
     char* sql4 = "2, 0, 0, 0, 1, 1, 1, 0, 1, 0);";
-    char* sql_create_file_dir = (char*)malloc(5+strlen(sql1)+strlen(sql2)+strlen(sql4)+strlen(parent_path));
-    sql_create_file_dir = strcpy(sql_create_file_dir, sql1);
-    sql_create_file_dir = strcpy(sql_create_file_dir, sql2);
-    sql_create_file_dir = strcpy(sql_create_file_dir, sql3);
-    sql_create_file_dir = strcpy(sql_create_file_dir, parent_path);
-    sql_create_file_dir = strcpy(sql_create_file_dir, sql3);
-    sql_create_file_dir = strcpy(sql_create_file_dir, sql4);
+    char* sql_create_file_dir ="";
+//    		(char*)malloc(5+strlen(sql1)+strlen(sql2)+strlen(sql4)+strlen(parent_path));
+    sql_create_file_dir = strncpy(sql_create_file_dir, sql1, strlen(sql1)+1);
+    sql_create_file_dir = strncpy(sql_create_file_dir, sql2, strlen(sql2+1));
+    sql_create_file_dir = strncpy(sql_create_file_dir, sql3, strlen(sql3)+1);
+    sql_create_file_dir = strncpy(sql_create_file_dir, parent_path, strlen(parent_path)+1);
+    sql_create_file_dir = strncpy(sql_create_file_dir, sql3, strlen(sql3)+1);
+    sql_create_file_dir = strncpy(sql_create_file_dir, sql4, strlen(sql4)+1);
 
     char* sql_begin = "BEGIN TRANSACTION";
 
@@ -1207,31 +1214,32 @@ int bb_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset
 		}
 
 		//Construct SQL statement
-		char* sql_insert_dir=(char*)malloc(30+strlen(sql1)+strlen(sql2)*9+strlen(fpath)+strlen(basename)+strlen(parent_folder)+strlen(type)+strlen(size)+strlen(mtime)*2);;
-		strcpy(sql_insert_dir, sql1);
-		strcpy(sql_insert_dir, fpath);
-		strcpy(sql_insert_dir, sql2);
-		strcpy(sql_insert_dir, basename);
-		strcpy(sql_insert_dir, sql2);
-		strcpy(sql_insert_dir, parent_folder);
-		strcpy(sql_insert_dir, sql2);
-		strcpy(sql_insert_dir, type);
-		strcpy(sql_insert_dir, sql2);
-		strcpy(sql_insert_dir, size);
-		strcpy(sql_insert_dir, sql2);
-		strcpy(sql_insert_dir, mtime);
-		strcpy(sql_insert_dir, sql2);
-		strcpy(sql_insert_dir, mtime);
-		strcpy(sql_insert_dir, sql2);
-		strcpy(sql_insert_dir, "0, ");
-		strcpy(sql_insert_dir, is_modified);
-		strcpy(sql_insert_dir, sql2);
-		strcpy(sql_insert_dir, "0, ");
-		strcpy(sql_insert_dir, is_deleted);
-		strcpy(sql_insert_dir, sql2);
-		strcpy(sql_insert_dir, "0, ");
-		strcpy(sql_insert_dir, revision);
-		strcpy(sql_insert_dir, ");");
+		char* sql_insert_dir=
+//				(char*)malloc(30+strlen(sql1)+strlen(sql2)*9+strlen(fpath)+strlen(basename)+strlen(parent_folder)+strlen(type)+strlen(size)+strlen(mtime)*2);;
+		strncpy(sql_insert_dir, sql1, strlen(sql1)+1);
+		strncpy(sql_insert_dir, fpath, strlen(fpath)+1);
+		strncpy(sql_insert_dir, sql2, strlen(sql2)+1);
+		strncpy(sql_insert_dir, basename, strlen(basename)+1);
+		strncpy(sql_insert_dir, sql2, strlen(sql2)+1);
+		strncpy(sql_insert_dir, parent_folder, strlen(parent_folder)+1);
+		strncpy(sql_insert_dir, sql2, strlen(sql2)+1);
+		strncpy(sql_insert_dir, type, strlen(type)+1);
+		strncpy(sql_insert_dir, sql2, strlen(sql2)+1);
+		strncpy(sql_insert_dir, size, strlen(size)+1);
+		strncpy(sql_insert_dir, sql2, strlen(sql2)+1);
+		strncpy(sql_insert_dir, mtime, strlen(mtime)+1);
+		strncpy(sql_insert_dir, sql2, strlen(sql2)+1);
+		strncpy(sql_insert_dir, mtime, strlen(mtime)+1);
+		strncpy(sql_insert_dir, sql2, strlen(sql2)+1);
+		strncpy(sql_insert_dir, "0, ",4);
+		strncpy(sql_insert_dir, is_modified, 2);
+		strncpy(sql_insert_dir, sql2, strlen(sql2)+1);
+		strncpy(sql_insert_dir, "0, ", 4);
+		strncpy(sql_insert_dir, is_deleted, 2);
+		strncpy(sql_insert_dir, sql2, strlen(sql2)+1);
+		strncpy(sql_insert_dir, "0, ",4);
+		strncpy(sql_insert_dir, revision, strlen(revision)+1);
+		strncpy(sql_insert_dir, ");", 3);
 
 		rc = sqlite3_exec(db1, sql_insert_dir, 0, 0, &zErrMsg);
 		log_msg("\nsql_insert_dir: %s\n", sql_insert_dir);
@@ -1375,10 +1383,11 @@ int ibc_getattr(const char *path, struct stat *statbuf)
 			 }
 		char* sql1 = "SELECT mtime FROM Directory WHERE full_path=";
 		char* sql2 =";";
-		char* sql_get_mtime =malloc(sizeof(sql_get_mtime));
-		strcpy(sql_get_mtime, sql1);
-		strcpy(sql_get_mtime, fpath);
-		strcpy(sql_get_mtime, sql2);
+		char* sql_get_mtime = "";
+//				malloc(sizeof(sql_get_mtime));
+		strncpy(sql_get_mtime, sql1, strlen(sql1)+1);
+		strncpy(sql_get_mtime, fpath, strlen(fpath)+1);
+		strncpy(sql_get_mtime, sql2, strlen(sql2)+1);
 
 		rc = sqlite3_exec(db1, sql_get_mtime, callback, &mtime, &zErrMsg);
 
