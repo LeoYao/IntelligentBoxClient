@@ -11,6 +11,7 @@
 #include <sqlite3.h>
 
 int test_sqlite();
+int test_sqlite_bind();
 
 
 #endif /* TEST_SQLITE_H_ */
