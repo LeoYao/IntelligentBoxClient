@@ -90,7 +90,7 @@ void update_atime(const char *path){
 	strftime(buf, sizeof(buf), "%a %Y-%m-%d %H:%M:%S %Z", &ts);
 	char* sql4 = "UPDATE Directory SET atime =";
 	char* sql5 = "WHERE full_path =";
-	char* sql_update_atime = (char*)malloc(1+strlen(sql4)+strlen(buf)+strlen(sql5)+strlen(fpath));
+	char* sql_update_atime = (char*)malloc(5+strlen(sql4)+strlen(buf)+strlen(sql5)+strlen(fpath));
 	strcpy(sql_update_atime, sql4);
 	strcpy(sql_update_atime, buf);
 	strcpy(sql_update_atime, sql5);
@@ -124,13 +124,13 @@ void update_mtime(const char *path){
 		strftime(buf, sizeof(buf), "%a %Y-%m-%d %H:%M:%S %Z", &ts);
 		char* sql4 = "UPDATE Directory SET mtime =";
 		char* sql5 = "WHERE full_path =";
-		char* sql_update_atime = (char*)malloc(1+strlen(sql4)+strlen(buf)+strlen(sql5)+strlen(fpath));
-		strcpy(sql_update_atime, sql4);
-		strcpy(sql_update_atime, buf);
-		strcpy(sql_update_atime, sql5);
-		strcpy(sql_update_atime, fpath);
+		char* sql_update_mtime =  (char*)malloc(5+strlen(sql4)+strlen(buf)+strlen(sql5)+strlen(fpath));
+		strcpy(sql_update_mtime, sql4);
+		strcpy(sql_update_mtime, buf);
+		strcpy(sql_update_mtime, sql5);
+		strcpy(sql_update_mtime, fpath);
 		//Update on atime in Directory table
-		rc = sqlite3_exec(db1, sql_update_atime, 0, 0, &zErrMsg);
+		rc = sqlite3_exec(db1, sql_update_mtime, 0, 0, &zErrMsg);
 
 		// If there's an error updating the database table, print it out.
 		if( rc!=SQLITE_OK ){
@@ -242,7 +242,7 @@ int bb_mkdir(const char *path, mode_t mode)
     char* sql3 = ",";
     char* sql4 = parent_path;
     char* sql5 = "null, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0);";
-    char* sql_create_file_dir = (char*)malloc(1+strlen(sql1)+strlen(sql2)+strlen(sql3)+strlen(sql4)+strlen(sql5));
+    char* sql_create_file_dir = (char*)malloc(strlen(sql1)+strlen(sql2)+strlen(sql3)+strlen(sql4)+strlen(sql5));
     sql_create_file_dir = strcpy(sql_create_file_dir, sql1);
     sql_create_file_dir = strcpy(sql_create_file_dir, sql2);
     sql_create_file_dir = strcpy(sql_create_file_dir, sql3);
@@ -479,7 +479,7 @@ int bb_open(const char *path, struct fuse_file_info *fi)
     //Prepare the sql statement
     char* sql1 = "SELECT is_local FROM Directory WHERE full_path =";
     char* sql2 = fpath;
-    char* sql_search_local = (char*)malloc(1+strlen(sql1)+strlen(sql2));
+    char* sql_search_local = (char*)malloc(5+strlen(sql1)+strlen(sql2));
     char* sql_commit = "COMMIT";
     strcpy(sql_search_local, sql1);
     strcpy(sql_search_local, sql2);
@@ -529,7 +529,7 @@ int bb_open(const char *path, struct fuse_file_info *fi)
             displayMetadata(output, "Get File Result");
             drbDestroyMetadata(output, true);
             char* sql3 = "UPDATE Directory SET is_local=1 WHERE full_path=";
-            char* sql_update_local= (char*)malloc(1+strlen(sql3)+strlen(sql2));
+            char* sql_update_local= (char*)malloc(5+strlen(sql3)+strlen(fpath));
             strcpy(sql_update_local, sql3);
             strcpy(sql_update_local, fpath);
             rc = sqlite3_exec(db1, sql_update_local, 0, 0, &zErrMsg);
@@ -658,7 +658,7 @@ int bb_write(const char *path, const char *buf, size_t size, off_t offset,
 
     char* sql1= "UPDATE Directory SET is_modified = 1 WHERE full_path = ";
     char* sql2 = fpath;
-    char* sql_update_is_modified = (char*)malloc(1+strlen(sql1)+strlen(sql2));
+    char* sql_update_is_modified = (char*)malloc(5+strlen(sql1)+strlen(sql2));
     char* sql_begin = "BEGIN TRANSACTION";
     char* sql_commit = "COMMIT";
     strcpy(sql_update_is_modified, sql1);
@@ -1028,7 +1028,7 @@ int bb_create(const char *path, mode_t mode, struct fuse_file_info *fi)
     char* sql2 = fpath;
     char* sql3 = ", ";
     char* sql4 = "2, 0, 0, 0, 1, 1, 1, 0, 1, 0);";
-    char* sql_create_file_dir = (char*)malloc(1+strlen(sql1)+strlen(sql2)+strlen(sql3)+strlen(sql4));
+    char* sql_create_file_dir = (char*)malloc(5+strlen(sql1)+strlen(sql2)+strlen(sql4)+strlen(parent_path));
     sql_create_file_dir = strcpy(sql_create_file_dir, sql1);
     sql_create_file_dir = strcpy(sql_create_file_dir, sql2);
     sql_create_file_dir = strcpy(sql_create_file_dir, sql3);
@@ -1178,12 +1178,11 @@ int bb_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset
 		char* type;
 		char *is_modified;
 		char* revision;
-		char *fpath = malloc(sizeof(*fpath));
+		char *fpath = 0;
 		bb_fullpath(fpath, path);
 		char *is_deleted;
 		char* size;
 		char* parent_folder;
-		char* filename;
 		char* basename(fpath);
 
 		//Prepair the SQL statement
@@ -1208,11 +1207,11 @@ int bb_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset
 		}
 
 		//Construct SQL statement
-		char* sql_insert_dir=malloc(sizeof(sql_insert_dir));;
+		char* sql_insert_dir=(char*)malloc(30+strlen(sql1)+strlen(sql2)*9+strlen(fpath)+strlen(basename)+strlen(parent_folder)+strlen(type)+strlen(size)+strlen(mtime)*2);;
 		strcpy(sql_insert_dir, sql1);
 		strcpy(sql_insert_dir, fpath);
 		strcpy(sql_insert_dir, sql2);
-		strcpy(sql_insert_dir, filename);
+		strcpy(sql_insert_dir, basename);
 		strcpy(sql_insert_dir, sql2);
 		strcpy(sql_insert_dir, parent_folder);
 		strcpy(sql_insert_dir, sql2);
@@ -1556,7 +1555,7 @@ sqlite3* init_sqlite(){
 
 	// Create a table Directory for storage several metadata on the files
 	// Or on Dropbox. If table already exists, ignore the SQL.
-	char *sql = "create table if not exists DIRECTORY (full_path varchar(4000) PRIMARY KEY, parent_folder_full_path varchar(4000), entry_name varchar(255), old_full_path varchar(4000), type integer, size integer, mtime datetime, atime datetime, is_locked integer, is_modified integer, is_local integer, is_deleted integer, in_use_count integer, revision string);";
+	char *sql = "CREATE TABLE IF NOT EXISTS Directory (full_path varchar(4000) PRIMARY KEY, parent_folder_full_path varchar(4000), entry_name varchar(255), old_full_path varchar(4000), type integer, size integer, mtime datetime, atime datetime, is_locked integer, is_modified integer, is_local integer, is_deleted integer, in_use_count integer, revision string);";
 	log_msg("\ncreate_db: %s\n", sql);
 	rc = sqlite3_exec(sqlite_conn, sql, 0, 0, &zErrMsg);
 		if( rc!=SQLITE_OK ){
@@ -1598,10 +1597,10 @@ int main(int argc, char *argv[])
 	char *c_secret = "x2pfq4vkf5bytnq";  //< consumer secret
 
 	// User key and secret. Leave them NULL or set them with your AccessToken.
-	//char *t_key    = "8pfo7r8fjml1xo6i"; // iihdh3t3dcld9svd < access token key
-	//char *t_secret = "m4glqxs42dcop4i";  // 0fw3qvfrqo1dlxx < access token secret
-	char *t_key    = "iihdh3t3dcld9svd"; //< access token key
-	char *t_secret = "0fw3qvfrqo1dlxx";  //< access token secret
+	char *t_key    = "8pfo7r8fjml1xo6i"; // iihdh3t3dcld9svd < access token key
+	char *t_secret = "m4glqxs42dcop4i";  // 0fw3qvfrqo1dlxx < access token secret
+//	char *t_key    = "iihdh3t3dcld9svd"; //< access token key
+//	char *t_secret = "0fw3qvfrqo1dlxx";  //< access token secret
 
 	// Global initialisation
 	drbInit();
