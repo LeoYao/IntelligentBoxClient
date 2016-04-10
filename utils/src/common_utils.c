@@ -6,6 +6,17 @@
  */
 
 #include <common_utils.h>
+#include <sys/time.h>
+
+//Delay method
+void delay(unsigned int mseconds)
+{
+	struct timespec sleep_time;
+	sleep_time.tv_sec = 0;
+	sleep_time.tv_nsec = (__syscall_slong_t)mseconds * 1000000 ;//to nanosecond
+
+	nanosleep(&sleep_time, NULL);
+}
 
 int getLastSlashPosition(const char* path)
 {

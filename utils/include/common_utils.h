@@ -13,6 +13,7 @@
 #include <stdarg.h>
 #include <string.h>
 
+void delay(unsigned int mseconds);
 char* concat_string(int n, ...);
 int getLastSlashPosition(const char* path);
 
