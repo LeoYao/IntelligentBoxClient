@@ -10,7 +10,10 @@
 
 #include <string.h>
 #include <stdbool.h>
+#include <stdarg.h>
+#include <string.h>
 
+char* concat_string(int n, ...);
 int getLastSlashPosition(const char* path);
 
 
