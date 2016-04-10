@@ -8,6 +8,7 @@
 #ifndef SQLITE_UTILS_H_
 #define SQLITE_UTILS_H_
 
+#include <common_utils.h>
 #include <params.h>
 #include <sqlite3.h>
 
@@ -32,5 +33,8 @@ struct directory
 typedef struct directory directory;
 
 int insert_directory(sqlite3* db, directory* data);
+int begin_transaction(sqlite3* db);
+int commit_transaction(sqlite3* db);
+int rollback_transaction(sqlite3* db);
 
 #endif /* SQLITE_UTILS_H_ */
