@@ -24,7 +24,6 @@
 #include <limits.h>
 #include <stdio.h>
 #include "dropbox.h"
-#include <fuse.h>
 #include <sqlite3.h>
 
 struct bb_state {
