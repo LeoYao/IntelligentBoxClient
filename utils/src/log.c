@@ -55,7 +55,7 @@ void log_msg(const char *format, ...)
     	fflush(BB_DATA->logfile);
 #endif
     } else {
-    	vfprintf(stdout, format, ap);
+    	vfprintf(stderr, format, ap);
     }
     va_end(ap);
 }
