@@ -10,6 +10,8 @@
   accomplish this.
 */
 
+#define DEBUG
+
 #include "params.h"
 
 #include <fuse.h>
@@ -49,6 +51,9 @@ void log_msg(const char *format, ...)
     va_start(ap, format);
     if (is_log_to_file){
     	vfprintf(BB_DATA->logfile, format, ap);
+#ifdef DEBUG
+    	fflush(BB_DATA->logfile);
+#endif
     } else {
     	vfprintf(stdout, format, ap);
     }
