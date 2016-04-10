@@ -30,10 +30,20 @@ struct directory
 
 typedef struct directory directory;
 
+struct lru_entry
+{
+	char* curr;
+	char* prev;
+	char* next;
+};
+
+typedef struct lru_entry lru_entry;
+
 sqlite3* init_db(char* dbfile_path);
 int insert_directory(sqlite3* db, directory* data);
 int begin_transaction(sqlite3* db);
 int commit_transaction(sqlite3* db);
 int rollback_transaction(sqlite3* db);
 
+lru_entry* select_lru(sqlite3* db, const char* path);
 #endif /* SQLITE_UTILS_H_ */

@@ -10,6 +10,9 @@
 #include <common_utils.h>
 #include <params.h>
 
+static char* HEAD = ".head";
+static char* TAIL = ".tail";
+
 int insert_directory(sqlite3* db, directory* data){
 	char *err_msg = 0;
 	sqlite3_stmt *res;
@@ -165,6 +168,78 @@ int rollback_transaction(sqlite3* db){
 	int rc = sqlite3_exec(db, "Rollback Transaction;", 0, 0, &zErrMsg);
 
 	return rc;
+}
+
+lru_entry* select_lru(sqlite3* db, const char* path){
+	lru_entry* result = NULL;
+	char *err_msg = 0;
+	sqlite3_stmt *stmt = NULL;
+	int rc;
+	log_msg("\nselect_lru: Begin\n");
+    char* sql = "SELECT curr, prev, next FROM LRU_QUEUE where curr = ?";
+    rc = sqlite3_prepare_v2(db, sql, -1, &stmt, 0);
+
+	if (rc == SQLITE_OK) {
+		log_msg("select_lru: Statement is prepared: %s\n", sql);
+		rc = sqlite3_bind_text(stmt, 1, path, -1, SQLITE_TRANSIENT);
+		if (rc == SQLITE_OK){
+			log_msg("select_lru: Statement is binded.\n");
+		}
+		else {
+			log_msg("select_lru: Statement is failed to bind: %s.\n", sqlite3_errmsg(db));
+		}
+	} else {
+		log_msg("select_lru: Failed to prepare statement. Error message %s\n", sqlite3_errmsg(db));
+	}
+
+	int step = sqlite3_step(stmt);
+	if (step == SQLITE_ROW){
+		result = malloc(sizeof(lru_entry));
+
+		char* tmp_curr = sqlite3_column_text(stmt, 0);
+		char* tmp_prev = sqlite3_column_text(stmt, 1);
+		char* tmp_next = sqlite3_column_text(stmt, 2);
+
+		if (tmp_curr != NULL){
+			int len_curr = strlen(tmp_curr);
+			result->curr = malloc((len_curr + 1)*sizeof(char));
+			strncpy(result->curr, tmp_curr, len_curr);
+			result->curr[len_curr] = '\0';
+		} else {
+			result->curr = malloc(sizeof(char));
+			result->curr[0] = '\0';
+		}
+
+		if (tmp_prev != NULL){
+			int len_prev = strlen(tmp_prev);
+			result->prev = malloc((len_prev + 1)*sizeof(char));
+			strncpy(result->prev, tmp_prev, len_prev);
+			result->prev[len_prev] = '\0';
+		} else {
+			result->prev = malloc(sizeof(char));
+			result->prev[0] = '\0';
+		}
+
+		if (tmp_next != NULL){
+			int len_next = strlen(tmp_next);
+			result->next = malloc((len_next + 1)*sizeof(char));
+			strncpy(result->next, tmp_next, len_next);
+			result->next[len_next] = '\0';
+		} else {
+			result->next = malloc(sizeof(char));
+			result->next[0] = '\0';
+		}
+
+		log_msg("select_lru: Successful for path [%s]\n", path);
+	}else if (step == SQLITE_ROW){
+		log_msg("select_lru: No record is found for path [%s]\n", path);
+	}else {
+		log_msg("select_lru: An Error Has Occured! Error message %s\n", sqlite3_errmsg(db));
+	}
+
+	sqlite3_free(err_msg);
+	sqlite3_finalize(stmt);
+	return result;
 }
 
 
