@@ -36,6 +36,8 @@
 #include <sqlite3.h>
 
 
+int is_log_to_file = 0;
+
 static int callback(void *NotUsed, int argc, char **argv, char **azColName);
 sqlite3* init_sqlite();
 void test_sqlite_insert(sqlite3* db);
@@ -65,14 +67,6 @@ static void bb_fullpath(char fpath[PATH_MAX], const char *path)
 
     log_msg("    bb_fullpath:  rootdir = \"%s\", path = \"%s\", fpath = \"%s\"\n",
 	    BB_DATA->rootdir, path, fpath);
-}
-
-
-//Delay method
-void delay(unsigned int mseconds)
-{
-    clock_t goal = mseconds + clock();
-    while (goal > clock());
 }
 
 void update_atime(const char *path){
@@ -947,6 +941,8 @@ int bb_fsyncdir(const char *path, int datasync, struct fuse_file_info *fi)
 // FUSE).
 void *bb_init(struct fuse_conn_info *conn)
 {
+	is_log_to_file = 1; //enable log to file
+
     log_msg("\nbb_init()\n");
 
     log_conn(conn);
@@ -969,7 +965,7 @@ void bb_destroy(void *userdata)
 	struct bb_state *private_data = userdata;
 	drbDestroyClient(private_data->client);
 	drbCleanup();
-
+	sqlite3_close_v2(private_data->sqlite_conn);
     log_msg("\nbb_destroy(userdata=0x%08x)\n", userdata);
 }
 
@@ -1553,39 +1549,6 @@ static int callback(void *NotUsed, int argc, char **argv, char **azColName){
   return 0;
 }
 
-//Initiating database
-sqlite3* init_sqlite(){
-
-	int rc;
-	char *zErrMsg = 0;
-
-	sqlite3 *sqlite_conn = NULL;
-	rc = sqlite3_open_v2("dir.db", &sqlite_conn, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL);
-	if( rc ){
-		fprintf(stderr, "Can't open database: %s\n", sqlite3_errmsg(sqlite_conn));
-		sqlite3_close(sqlite_conn);
-		return(sqlite_conn);
-	}
-
-	// Create a table Directory for storage several metadata on the files
-	// Or on Dropbox. If table already exists, ignore the SQL.
-	char *sql = "CREATE TABLE IF NOT EXISTS Directory (full_path varchar(4000) PRIMARY KEY, parent_folder_full_path varchar(4000), entry_name varchar(255), old_full_path varchar(4000), type integer, size integer, mtime datetime, atime datetime, is_locked integer, is_modified integer, is_local integer, is_deleted integer, in_use_count integer, revision string);";
-	fprintf(stderr, "\ncreate_db: %s\n", sql);
-	rc = sqlite3_exec(sqlite_conn, sql, 0, 0, &zErrMsg);
-		if( rc!=SQLITE_OK ){
-			fprintf(stderr, "SQL error: %s\n", zErrMsg);
-			sqlite3_free(zErrMsg);
-		}
-	sql = "create table if not exists LOCK (dummy char(1));";
-	rc = sqlite3_exec(sqlite_conn, sql, 0, 0, &zErrMsg);
-	if( rc!=SQLITE_OK ){
-		fprintf(stderr, "SQL error: %s\n", zErrMsg);
-		sqlite3_free(zErrMsg);
-	}
-	return (sqlite_conn);
-}
-
-
 
 int main(int argc, char *argv[])
 {
@@ -1652,7 +1615,7 @@ int main(int argc, char *argv[])
     bb_data->logfile = log_open();
     bb_data->client = cli;
 
-    sqlite3 *sqlite_conn = init_sqlite();
+    sqlite3 *sqlite_conn = init_db("dir.db");
     bb_data->sqlite_conn = sqlite_conn;
 
     // turn over control to fuse
