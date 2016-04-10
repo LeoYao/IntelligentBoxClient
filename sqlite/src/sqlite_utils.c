@@ -114,7 +114,7 @@ sqlite3* init_db(char* dbfile_path){
 
 int begin_transaction(sqlite3* db){
 
-	char* sql = "BEGIN TRANSACTION;\0";
+	char* sql = "BEGIN TRANSACTION;";
 	char *zErrMsg = 0;
 	//Begin transaction to database
 	int rc = sqlite3_exec(db, sql, 0, 0, &zErrMsg);
@@ -134,7 +134,7 @@ int begin_transaction(sqlite3* db){
 	if (rc != SQLITE_OK){
 		return -1;
 	}
-	sql = "UPDATE LOCK SET dummy = 1;\0";
+	sql = "UPDATE LOCK SET dummy = 1;";
 	rc = sqlite3_exec(db, sql, 0, 0, &zErrMsg);
 	//If SQLITE is busy, retry twice, if still busy then abort
 	for(int i=0;i<2;i++){
@@ -155,14 +155,14 @@ int begin_transaction(sqlite3* db){
 int commit_transaction(sqlite3* db){
 
 	char *zErrMsg = 0;
-	int rc = sqlite3_exec(db, "Commit Transaction;\0", 0, 0, &zErrMsg);
+	int rc = sqlite3_exec(db, "Commit Transaction;", 0, 0, &zErrMsg);
 
 	return rc;
 }
 
 int rollback_transaction(sqlite3* db){
 	char *zErrMsg = 0;
-	int rc = sqlite3_exec(db, "Rollback Transaction;\0", 0, 0, &zErrMsg);
+	int rc = sqlite3_exec(db, "Rollback Transaction;", 0, 0, &zErrMsg);
 
 	return rc;
 }
