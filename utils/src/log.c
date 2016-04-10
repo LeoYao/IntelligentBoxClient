@@ -23,6 +23,8 @@
 
 #include "log.h"
 
+extern int is_log_to_file;
+
 FILE *log_open()
 {
     FILE *logfile;
@@ -45,8 +47,12 @@ void log_msg(const char *format, ...)
 {
     va_list ap;
     va_start(ap, format);
-
-    vfprintf(BB_DATA->logfile, format, ap);
+    if (is_log_to_file){
+    	vfprintf(BB_DATA->logfile, format, ap);
+    } else {
+    	vfprintf(stdout, format, ap);
+    }
+    va_end(ap);
 }
 
 // fuse context
