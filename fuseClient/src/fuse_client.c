@@ -39,7 +39,6 @@
 int is_log_to_file = 0;
 
 static int callback(void *NotUsed, int argc, char **argv, char **azColName);
-sqlite3* init_sqlite();
 void test_sqlite_insert(sqlite3* db);
 
 // Report errors to logfile and give -errno to caller

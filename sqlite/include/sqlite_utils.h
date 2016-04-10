@@ -30,6 +30,7 @@ struct directory
 
 typedef struct directory directory;
 
+sqlite3* init_db(char* dbfile_path);
 int insert_directory(sqlite3* db, directory* data);
 int begin_transaction(sqlite3* db);
 int commit_transaction(sqlite3* db);

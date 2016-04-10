@@ -66,7 +66,7 @@ sqlite3* init_db(char* dbfile_path){
 	if( rc ){
 		log_msg("Can't open database: %s\n", sqlite3_errmsg(sqlite_conn));
 		sqlite3_close(sqlite_conn);
-		return(sqlite_conn);
+		return(NULL);
 	}
 
 	// Create a table Directory for storage several metadata on the files
