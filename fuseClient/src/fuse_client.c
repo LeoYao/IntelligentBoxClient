@@ -22,6 +22,7 @@
 #include <log.h>
 #include <time.h>
 
+#include <sqlite_utils.h>
 //#define HAVE_SYS_XATTR_H
 
 #ifdef HAVE_SYS_XATTR_H
@@ -37,6 +38,7 @@
 
 static int callback(void *NotUsed, int argc, char **argv, char **azColName);
 sqlite3* init_sqlite();
+void test_sqlite_insert(sqlite3* db);
 
 // Report errors to logfile and give -errno to caller
 static int bb_error(char *str)
@@ -950,8 +952,7 @@ void *bb_init(struct fuse_conn_info *conn)
     log_conn(conn);
     log_fuse_context(fuse_get_context());
 
-    sqlite3 *sqlite_conn = init_sqlite();
-    BB_DATA->sqlite_conn = sqlite_conn;
+    test_sqlite_insert(BB_DATA->sqlite_conn);
 
     return BB_DATA;
 }
@@ -1569,7 +1570,7 @@ sqlite3* init_sqlite(){
 	// Create a table Directory for storage several metadata on the files
 	// Or on Dropbox. If table already exists, ignore the SQL.
 	char *sql = "CREATE TABLE IF NOT EXISTS Directory (full_path varchar(4000) PRIMARY KEY, parent_folder_full_path varchar(4000), entry_name varchar(255), old_full_path varchar(4000), type integer, size integer, mtime datetime, atime datetime, is_locked integer, is_modified integer, is_local integer, is_deleted integer, in_use_count integer, revision string);";
-	log_msg("\ncreate_db: %s\n", sql);
+	fprintf(stderr, "\ncreate_db: %s\n", sql);
 	rc = sqlite3_exec(sqlite_conn, sql, 0, 0, &zErrMsg);
 		if( rc!=SQLITE_OK ){
 			fprintf(stderr, "SQL error: %s\n", zErrMsg);
@@ -1591,7 +1592,6 @@ int main(int argc, char *argv[])
 
     int fuse_stat;
     struct bb_state *bb_data;
-
     // bbfs doesn't do any access checking on its own (the comment
     // blocks in fuse.h mention some of the functions that need
     // accesses checked -- but note there are other functions, like
@@ -1633,11 +1633,14 @@ int main(int argc, char *argv[])
     if ((argc < 3) || (argv[argc-2][0] == '-') || (argv[argc-1][0] == '-'))
 	bb_usage();
 
+
     bb_data = malloc(sizeof(struct bb_state));
+
     if (bb_data == NULL) {
 	perror("main calloc");
 	abort();
     }
+
 
     // Pull the rootdir out of the argument list and save it in my
     // internal data
@@ -1647,14 +1650,40 @@ int main(int argc, char *argv[])
     argc--;
 
     bb_data->logfile = log_open();
-
     bb_data->client = cli;
+
+    sqlite3 *sqlite_conn = init_sqlite();
+    bb_data->sqlite_conn = sqlite_conn;
 
     // turn over control to fuse
     fprintf(stderr, "about to call fuse_main\n");
     fuse_stat = fuse_main(argc, argv, &bb_oper, bb_data);
     fprintf(stderr, "fuse_main returned %d\n", fuse_stat);
 
-
     return fuse_stat;
+}
+
+void test_sqlite_insert(sqlite3* db){
+
+	directory* data = malloc(sizeof(directory));
+
+	data->full_path = "a";
+	data->parent_folder_full_path = "b";
+	data->entry_name = "c";
+	data->old_full_path = "d";
+	data->type = 1;
+	data->size = 2;
+	data->mtime = 3;
+	data->atime = 4;
+	data->is_locked = 0;
+	data->is_modified = 0;
+	data->is_local =0;
+	data->is_delete = 0;
+	data->in_use_count = 5;
+	data->revision = "e";
+
+	insert_directory(db, data);
+
+	free(data);
+
 }

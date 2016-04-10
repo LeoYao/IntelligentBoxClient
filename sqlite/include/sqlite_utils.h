@@ -8,14 +8,15 @@
 #ifndef SQLITE_UTILS_H_
 #define SQLITE_UTILS_H_
 
+#include <params.h>
 #include <sqlite3.h>
 
 struct directory
 {
-	char full_path;
-	char parent_folder;
-	char entry_name;
-	char old_full_path;
+	char* full_path;
+	char* parent_folder_full_path;
+	char* entry_name;
+	char* old_full_path;
 	int type;
 	int size;
 	long mtime;
@@ -25,11 +26,11 @@ struct directory
 	int is_local;
 	int is_delete;
 	int in_use_count;
-	char revision;
+	char* revision;
 };
 
 typedef struct directory directory;
 
-
+int insert_directory(sqlite3* db, directory* data);
 
 #endif /* SQLITE_UTILS_H_ */
