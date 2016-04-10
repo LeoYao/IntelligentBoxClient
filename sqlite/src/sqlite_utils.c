@@ -84,6 +84,31 @@ sqlite3* init_db(char* dbfile_path){
 		log_msg("SQL error: %s\n", zErrMsg);
 		sqlite3_free(zErrMsg);
 	}
+
+
+	sql = concat_string(2,
+			"create table if not exists LRU_QUEUE\n",
+	    	"(curr varchar(4000)  PRIMARY KEY,prev varchar(4000),next varchar(4000));");
+	rc = sqlite3_exec(sqlite_conn, sql, 0, 0, &zErrMsg);
+	if( rc!=SQLITE_OK ){
+		log_msg("SQL error: %s\n", zErrMsg);
+		sqlite3_free(zErrMsg);
+	}
+
+	sql = "insert or ignore into lru_queue (curr, next) values('.head', '.tail');";
+	rc = sqlite3_exec(sqlite_conn, sql, 0, 0, &zErrMsg);
+	if( rc!=SQLITE_OK ){
+		log_msg("SQL error: %s\n", zErrMsg);
+		sqlite3_free(zErrMsg);
+	}
+
+	sql = "insert or ignore into lru_queue (curr, prev) values('.tail', '.head');";
+	rc = sqlite3_exec(sqlite_conn, sql, 0, 0, &zErrMsg);
+	if( rc!=SQLITE_OK ){
+		log_msg("SQL error: %s\n", zErrMsg);
+		sqlite3_free(zErrMsg);
+	}
+
 	return (sqlite_conn);
 }
 
