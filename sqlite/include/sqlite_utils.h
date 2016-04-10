@@ -8,8 +8,6 @@
 #ifndef SQLITE_UTILS_H_
 #define SQLITE_UTILS_H_
 
-#include <common_utils.h>
-#include <params.h>
 #include <sqlite3.h>
 
 struct directory

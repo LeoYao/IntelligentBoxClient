@@ -7,6 +7,9 @@
 
 #include <sqlite_utils.h>
 
+#include <common_utils.h>
+#include <params.h>
+
 int insert_directory(sqlite3* db, directory* data){
 	char *err_msg = 0;
 	sqlite3_stmt *res;
@@ -52,35 +55,92 @@ int insert_directory(sqlite3* db, directory* data){
 	return 0;
 }
 
+//Initiating database
+sqlite3* init_db(char* dbfile_path){
+
+	int rc;
+	char *zErrMsg = 0;
+
+	sqlite3 *sqlite_conn = NULL;
+	rc = sqlite3_open_v2(dbfile_path, &sqlite_conn, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL);
+	if( rc ){
+		log_msg("Can't open database: %s\n", sqlite3_errmsg(sqlite_conn));
+		sqlite3_close(sqlite_conn);
+		return(sqlite_conn);
+	}
+
+	// Create a table Directory for storage several metadata on the files
+	// Or on Dropbox. If table already exists, ignore the SQL.
+	char *sql = "CREATE TABLE IF NOT EXISTS Directory (full_path varchar(4000) PRIMARY KEY, parent_folder_full_path varchar(4000), entry_name varchar(255), old_full_path varchar(4000), type integer, size integer, mtime datetime, atime datetime, is_locked integer, is_modified integer, is_local integer, is_deleted integer, in_use_count integer, revision string);";
+	log_msg("\ncreate_db: %s\n", sql);
+	rc = sqlite3_exec(sqlite_conn, sql, 0, 0, &zErrMsg);
+	if( rc!=SQLITE_OK ){
+		log_msg("SQL error: %s\n", zErrMsg);
+		sqlite3_free(zErrMsg);
+	}
+	sql = "create table if not exists LOCK (dummy char(1));";
+	rc = sqlite3_exec(sqlite_conn, sql, 0, 0, &zErrMsg);
+	if( rc!=SQLITE_OK ){
+		log_msg("SQL error: %s\n", zErrMsg);
+		sqlite3_free(zErrMsg);
+	}
+	return (sqlite_conn);
+}
+
 int begin_transaction(sqlite3* db){
-	char* sql_begin = "BEGIN TRANSACTION; UPDATE LOCK SET dummy = 1;";
+
+	char* sql = "BEGIN TRANSACTION;\0";
 	char *zErrMsg = 0;
 	//Begin transaction to database
-	int rc = sqlite3_exec(db, sql_begin, 0, 0, &zErrMsg);
+	int rc = sqlite3_exec(db, sql, 0, 0, &zErrMsg);
 	//If SQLITE is busy, retry twice, if still busy then abort
 	for(int i=0;i<2;i++){
+		int k = 2;
+		log_msg("\ni: %d %d\n", i, k);
+		log_msg("\nrc2: %d %d\n", rc, SQLITE_BUSY);
 		if(rc == SQLITE_BUSY){
-			delay(50);
-			rc = sqlite3_exec(db, sql_begin, 0, 0, &zErrMsg);
+			delay(500);
+			rc = sqlite3_exec(db, sql, 0, 0, &zErrMsg);
+		}else{
+			break;
+		}
+	}
+
+	if (rc != SQLITE_OK){
+		return -1;
+	}
+	sql = "UPDATE LOCK SET dummy = 1;\0";
+	rc = sqlite3_exec(db, sql, 0, 0, &zErrMsg);
+	//If SQLITE is busy, retry twice, if still busy then abort
+	for(int i=0;i<2;i++){
+		int k = 2;
+		log_msg("\ni: %d %d\n", i, k);
+		log_msg("\nrc3: %d %d\n", rc, SQLITE_BUSY);
+		if(rc == SQLITE_BUSY){
+			delay(500);
+			rc = sqlite3_exec(db, sql, 0, 0, &zErrMsg);
 		}else{
 			return 0;
 		}
 	}
-
-	return 1;
+	log_msg("\nFailed to create a transaction\n");
+	return -1;
 }
 
 int commit_transaction(sqlite3* db){
 
 	char *zErrMsg = 0;
-	int rc = sqlite3_exec(db, "Commit Transaction;", 0, 0, &zErrMsg);
+	int rc = sqlite3_exec(db, "Commit Transaction;\0", 0, 0, &zErrMsg);
 
 	return rc;
 }
 
 int rollback_transaction(sqlite3* db){
 	char *zErrMsg = 0;
-	int rc = sqlite3_exec(db, "Rollback Transaction;", 0, 0, &zErrMsg);
+	int rc = sqlite3_exec(db, "Rollback Transaction;\0", 0, 0, &zErrMsg);
 
 	return rc;
 }
+
+
+
