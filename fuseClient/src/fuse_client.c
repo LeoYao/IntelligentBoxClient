@@ -478,6 +478,7 @@ int bb_open(const char *path, struct fuse_file_info *fi)
     directory* dir;
 
     //Search to see if the directory is already in the database
+    begin_transaction(db1);
     dir = search_directory(db1, fpath);
     if( dir == SQLITE_ROW ){
 
@@ -488,7 +489,6 @@ int bb_open(const char *path, struct fuse_file_info *fi)
     	free(log_msg);
     	return err;
     }
-
 
     // If the file is not on local, Download it from Dropbox
     if( dir->is_local == 0){
@@ -512,6 +512,7 @@ int bb_open(const char *path, struct fuse_file_info *fi)
             update_isLocal(db1, fpath);
             displayMetadata(output, "Get File Result");
             drbDestroyMetadata(output, true);
+
         }
     }
     // If the file is local, just open it.
@@ -526,7 +527,7 @@ int bb_open(const char *path, struct fuse_file_info *fi)
 
     // Get timestamp when the file was open
     update_atime(fpath);
-
+    commit_transaction(db1);
     return retstat;
 
 }
