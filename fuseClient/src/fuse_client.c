@@ -474,42 +474,24 @@ int bb_open(const char *path, struct fuse_file_info *fi)
 
     int retstat = 0;
     int fd;
+    int* i =0;
+    directory* dir;
 
-    //Prepare the sql statement
-    char* sql1 = "SELECT is_local FROM Directory WHERE full_path =";
-    char* sql2 = fpath;
-    char* sql_search_local ="";
-//    		(char*)malloc(5+strlen(sql1)+strlen(sql2));
-    char* sql_commit = "COMMIT";
-    strncpy(sql_search_local, sql1, strlen(sql1)+1);
-    strncpy(sql_search_local, sql2, strlen(sql2)+1);
+    //Search to see if the directory is already in the database
+    dir = search_directory(db1, fpath);
+    if( dir == SQLITE_ROW ){
 
-    // Start database transaction, if it's locked retry twice, 50 millisecond interval.
-    char* sql_begin = "BEGIN TRANSACTION;";
-    rc = sqlite3_exec(db1, sql_begin, 0, 0, &zErrMsg);
-    //If SQLITE is busy, retry twice, if still busy then abort
-        for(int i=0;i<2;i++){
-        	if(rc == SQLITE_BUSY){
-        		delay(50);
-        		rc = sqlite3_exec(db1, sql_begin, 0, 0, &zErrMsg);
-        	}else{
-        		break;
-        	}
-        }
+    	i++;
+    }else if( dir ==SQLITE_DONE ){
+    	log_msg("\nThere's No Such Directory on local or on Dropbox.\n");
+    	printf("\nError: No such directory. Please retry.\n");
+    	free(log_msg);
+    	return err;
+    }
 
-    // Executing sql statement seaching for the file to see if it's on local storage
-    rc = sqlite3_exec(db1, sql_search_local, callback, &is_local, &zErrMsg);
-
-    // If there's error executing the sql statement, print it out.
-
-
-    if( rc!=SQLITE_OK ){
-    		fprintf(stderr, "SQL error: %s\n", zErrMsg);
-    		sqlite3_free(zErrMsg);
-    	}
 
     // If the file is not on local, Download it from Dropbox
-    if( (*is_local) == 0){
+    if( dir->is_local == 0){
     log_msg("\nbb_open(path\"%s\", fi=0x%08x)\n",
 	    path, fi);
     bb_fullpath(fpath, path);
@@ -526,27 +508,10 @@ int bb_open(const char *path, struct fuse_file_info *fi)
             printf("Get File error (%d): %s\n", err, (char*)output);
             free(output);
         } else {
+        	//Get result as well as update isLocal value in the database table
             displayMetadata(output, "Get File Result");
             drbDestroyMetadata(output, true);
-            char* sql3 = "UPDATE Directory SET is_local=1 WHERE full_path=";
-            char* sql_update_local= "";
-//            		(char*)malloc(5+strlen(sql3)+strlen(fpath));
-            strncpy(sql_update_local, sql3, strlen(sql3)+1);
-            strncpy(sql_update_local, fpath, strlen(fpath)+1);
-            rc = sqlite3_exec(db1, sql_update_local, 0, 0, &zErrMsg);
-
-           // If there's an error updating the database table, print it out.
-            if( rc!=SQLITE_OK ){
-            		fprintf(stderr, "SQL error: %s\n", zErrMsg);
-            		sqlite3_free(zErrMsg);
-            	}
-
-            rc = sqlite3_exec(db1, sql_commit, 0, 0, &zErrMsg);
-
-            if( rc!=SQLITE_OK){
-            	fprintf(stderr, "SQL error: %s\n", zErrMsg);
-            	            		sqlite3_free(zErrMsg);
-            }
+            update_isLocal(db1, fpath);
 
         }
     }
@@ -564,17 +529,6 @@ int bb_open(const char *path, struct fuse_file_info *fi)
 
     // Get timestamp when the file was open
     update_atime(fpath);
-
-    //Commit the changes into database table and release the lock on the database.
-
-	rc = sqlite3_exec(db1, sql_commit, callback, &is_local, &zErrMsg);
-	if( rc!=SQLITE_OK ){
-	            		fprintf(stderr, "SQL error: %s\n", zErrMsg);
-	            		sqlite3_free(zErrMsg);
-	            	}
-
-    //Free pointers
-
 
 
 
