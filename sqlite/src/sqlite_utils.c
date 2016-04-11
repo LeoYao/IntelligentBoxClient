@@ -28,7 +28,7 @@ directory* new_directory(
 		const char* entry_name,
 		const char* old_full_path,
 		int type,
-		int size,
+		unsigned int size,
 		sqlite_int64 mtime,
 		sqlite_int64 atime,
 		int is_locked,
@@ -58,9 +58,46 @@ directory* new_directory(
 	return data;
 }
 
+directory* directory_from_dbx(drbMetadata* metadata){
+	char* full_path = metadata->path;
+	char* parent_path = get_parent_path(metadata->path);
+	char* name = get_file_name(metadata->path);
+
+	int type = 2;
+	if (*(metadata->isDir))
+	{
+		type = 1;
+	}
+
+	unsigned int size = *(metadata->bytes);
+	long mtime = parse_time(metadata->modified);
+	long atime = parse_time(metadata->modified);
+
+	directory* dir = new_directory(
+			full_path,
+			parent_path,
+			name,
+			"",
+			type,
+			size,
+			mtime,
+			atime,
+			0,
+			0,
+			0,
+			0,
+			0,
+			""
+			);
+	free(parent_path);
+	free(name);
+
+	return dir;
+}
+
 void free_directory_content(directory* dir){
 	if (dir == NULL){
-			return;
+		return;
 	}
 
 	free(dir->full_path);
@@ -227,7 +264,6 @@ int update_isLocal(sqlite3* db, char* full_path){
 	return 0;
 }
 
-
 int insert_directory(sqlite3* db, directory* data){
 
 	log_msg("\ninsert_directory: Begin\n");
@@ -270,6 +306,39 @@ int insert_directory(sqlite3* db, directory* data){
 	sqlite3_finalize(stmt);
 
 	log_msg("insert_directory: Completed\n");
+	return 0;
+}
+
+
+int clean_subdirectories(sqlite3* db, char* parent_path){
+
+	log_msg("\clean_subdirectories: Begin\n");
+	sqlite3_stmt *stmt;
+	int rc;
+	char* sql = "delete from Directory where parent_folder_full_path = ?\0";
+
+	rc = sqlite3_prepare_v2(db, sql, -1, &stmt, 0);
+	if (rc == SQLITE_OK) {
+		log_msg("clean_subdirectories: Statement is prepared: %s\n", sql);
+        sqlite3_bind_text(stmt, 1, parent_path, -1, SQLITE_TRANSIENT);
+		log_msg("clean_subdirectories: Statement is binded.\n");
+	} else {
+		log_msg("clean_subdirectories: Failed to prepare statement. Error message: %s\n", sqlite3_errmsg(db));
+	}
+
+	if (rc == SQLITE_OK){
+		rc = sqlite3_step(stmt);
+		if (rc == SQLITE_DONE){
+			log_msg("clean_subdirectories: Successful\n");
+			rc = SQLITE_OK;
+		}else {
+			log_msg("clean_subdirectories: An Error Has Occured! Error message: %s\n", sqlite3_errmsg(db));
+		}
+	}
+
+	sqlite3_finalize(stmt);
+
+	log_msg("clean_subdirectories: Completed\n");
 	return 0;
 }
 

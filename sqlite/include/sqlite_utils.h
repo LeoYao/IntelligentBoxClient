@@ -9,6 +9,7 @@
 #define SQLITE_UTILS_H_
 
 #include <sqlite3.h>
+#include <dropbox.h>
 
 struct directory
 {
@@ -17,7 +18,7 @@ struct directory
 	char* entry_name;
 	char* old_full_path;
 	int type;
-	int size;
+	unsigned int size;
 	sqlite_int64 mtime;
 	sqlite_int64 atime;
 	int is_locked;
@@ -46,7 +47,7 @@ directory* new_directory(const char* full_path,
 		const char* entry_name,
 		const char* old_full_path,
 		int type,
-		int size,
+		unsigned int size,
 		sqlite_int64 mtime,
 		sqlite_int64 atime,
 		int is_locked,
@@ -55,11 +56,13 @@ directory* new_directory(const char* full_path,
 		int is_delete,
 		int in_use_count,
 		char* revision);
+directory* directory_from_dbx(drbMetadata* metadata);
 void free_directory(directory* lru);
 void free_directories(directory** dirs, int size);
 directory* search_directory(sqlite3* db, char* full_path);
 int update_isLocal(sqlite3* db, char* full_path);
 int insert_directory(sqlite3* db, directory* data);
+int clean_subdirectories(sqlite3* db, char* parent_path);
 directory** search_subdirectories(sqlite3* db, char* parent_path, int* count);
 
 int begin_transaction(sqlite3* db);
