@@ -277,6 +277,7 @@ int bb_rmdir(const char *path)
 {
     int retstat = 0;
     char fpath[PATH_MAX];
+    sqlite3* db1 = BB_DATA->sqlite_conn;
 
     log_msg("\nbb_rmdir(path=\"%s\")\n",
 	    path);
@@ -287,7 +288,7 @@ int bb_rmdir(const char *path)
 	retstat = bb_error("bb_rmdir rmdir");
 
    //Update the database table to set is_deleted to 1
-    update_isDeleted(fpath);
+    update_isDeleted(db1, fpath);
     log_msg("\nUpdate Database Table After rmdir!\n");
     return retstat;
 }
