@@ -938,11 +938,11 @@ int bb_fsyncdir(const char *path, int datasync, struct fuse_file_info *fi)
 // parameter coming in here, or else the fact should be documented
 // (and this might as well return void, as it did in older versions of
 // FUSE).
-void *bb_init(struct fuse_conn_info *conn)
+void *ibc_init(struct fuse_conn_info *conn)
 {
 	is_log_to_file = 1; //enable log to file
 
-    log_msg("\nbb_init()\n");
+    log_msg("\nibc_init()\n");
 
     log_conn(conn);
     log_fuse_context(fuse_get_context());
@@ -957,13 +957,13 @@ void *bb_init(struct fuse_conn_info *conn)
  *
  * Introduced in version 2.3
  */
-void bb_destroy(void *userdata)
+void ibc_destroy(void *userdata)
 {
 	struct bb_state *private_data = userdata;
 	drbDestroyClient(private_data->client);
 	drbCleanup();
 	sqlite3_close_v2(private_data->sqlite_conn);
-    log_msg("\nbb_destroy(userdata=0x%08x)\n", userdata);
+    log_msg("\nibc_destroy(userdata=0x%08x)\n", userdata);
 }
 
 /**
@@ -977,24 +977,10 @@ void bb_destroy(void *userdata)
  *
  * Introduced in version 2.5
  */
-int bb_access(const char *path, int mask)
+int ibc_access(const char *path, int mask)
 {
-	log_msg("\nbb_access: %s\n", path);
+	log_msg("\nibc_access: %s\n", path);
 	return 0;
-
-    /*int retstat = 0;
-    char fpath[PATH_MAX];
-
-    log_msg("\nbb_access(path=\"%s\", mask=0%o)\n",
-	    path, mask);
-    bb_fullpath(fpath, path);
-
-    retstat = access(fpath, mask);
-
-    if (retstat < 0)
-	retstat = bb_error("bb_access access");
-
-    return retstat;*/
 }
 
 /**
@@ -1091,28 +1077,107 @@ int bb_create(const char *path, mode_t mode, struct fuse_file_info *fi)
  *
  * Introduced in version 2.3
  */
-int bb_opendir(const char *path, struct fuse_file_info *fi)
+int ibc_opendir(const char *path, struct fuse_file_info *fi)
 {
-	log_msg("\nbb_opendir: %s\n", path);
-	//return 0;
+	log_msg("\nibc_opendir: %s\n", path);
 
-
-	void* output = NULL;
-	int err = drbGetMetadata(BB_DATA->client, &output,
-						 DRBOPT_PATH, path,
-						 DRBOPT_LIST, true,
-						 //                     DRBOPT_FILE_LIMIT, 100,
-						 DRBOPT_END);
-	if (err != DRBERR_OK) {
-		log_msg("bb_opendir - drbGetMetadata error (%d): %s\n", err, (char*)output);
-		free(output);
+	directory* dir = search_directory(BB_DATA->sqlite_conn, path);
+	if (dir == NULL){
 		return ENOENT;
-	} else {
-		log_msg("bb_opendir - drbGetMetadata: succeed in reading meta data (%d).\n", err);
-		fi->fh = (intptr_t)output;
 	}
 
-	return 0;
+	if (dir->type != 1){
+		return ENOTDIR;
+	}
+
+	char* parent_path = get_parent_path(path);
+	char* path_in_sqlite = path;
+	char* parent_path_in_sqlite = get_parent_path(path);
+	if (strlen(path) == 1){
+		path_in_sqlite = "\0";
+		parent_path_in_sqlite = copy_text(".\0");
+	}
+
+	//Get local full path
+	char fpath[PATH_MAX];
+	bb_fullpath(fpath, path);
+
+	int ret = 0;
+	int err_dbx = DRBERR_OK;
+	if (!(dir->is_local)) {
+
+		//create local folder
+		struct stat st = {0};
+		if (stat(fpath, &st) == -1) {
+			ret = mkdir(fpath, 0700);
+		}
+
+		if (ret == 0){
+			drbMetadata* metadata = NULL;
+			err_dbx = get_dbx_metadata(BB_DATA->client, &metadata, path);
+
+			int err_sqlite = 0;
+			if (err_dbx == DRBERR_OK) {
+				if (*(metadata->isDir)){
+					//Begin transaction
+					int err_trans = begin_transaction(BB_DATA->sqlite_conn);
+
+					//Set is_local to 1 for parent folder
+					update_isLocal(BB_DATA->sqlite_conn, path_in_sqlite);
+
+					//Save metadata into sqlite for sub file/folders
+					drbMetadataList* list = metadata->contents;
+					int list_size = list->size;
+					for (int i = 0; i < list_size; ++i){
+						drbMetadata* sub_metadata = list->array[i];
+						directory* sub_dir = directory_from_dbx(sub_metadata);
+						err_sqlite = insert_directory(BB_DATA->sqlite_conn, sub_dir);
+						free_directory(sub_dir);
+
+						if (err_sqlite != 0){
+							ret = EIO;
+							break;
+						}
+					}
+
+					//Finish transaction
+					if (err_trans == 0){
+						if (err_sqlite == 0){
+							commit_transaction(BB_DATA->sqlite_conn);
+						}
+						else{
+							rollback_transaction(BB_DATA->sqlite_conn);
+						}
+					}
+				} else {
+					ret = ENOENT;
+				}
+				release_dbx_metadata(metadata);
+			} else {
+				log_msg("ibc_opendir - Failed to drbGetMetadata. Error Code: (%d).\n", err_dbx);
+				ret = EIO;
+			}
+		}
+	}
+
+	//May not need to open the local folder since everything is logical
+	/*
+	if (ret == 0){
+		DIR *dp;
+		dp = opendir(fpath);
+		if (dp == NULL){
+			log_msg("bb_opendir - Failed to opendir(%s).\n", fpath);
+			ret = ENOENT;
+		}
+		fi->fh = (intptr_t) dp;
+	}*/
+
+	free_directory(dir);
+	free(parent_path);
+	free(parent_path_in_sqlite);
+
+	log_msg("ibc_opendir: Completed [%s]\n", path);
+	return ret;
 }
 
 /** Read directory
@@ -1136,133 +1201,39 @@ int bb_opendir(const char *path, struct fuse_file_info *fi)
  *
  * Introduced in version 2.3
  */
-int bb_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset,
+int ibc_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset,
 	       struct fuse_file_info *fi)
 {
+	log_msg("\nibc_readdir: %s\n", path);
 
-
-	log_msg("\nbb_readdir: %s\n", path);
-
-	drbMetadata* meta = (drbMetadata*)fi->fh;
-
-	int rc;
-	char *zErrMsg = 0;
-
-//		time_t now;
-//		struct tm ts;
-//		char buff[80];
-//		time(&now);
-//		ts = *localtime(&time);
-//		strftime(buff, sizeof(buf), "%a %Y-%m-%d %H:%M:%S %Z", &ts);
-
-//		drbClient* cli = BB_DATA->client;
-		sqlite3* db1 = BB_DATA->sqlite_conn;
-
-
-	// Get all the file's metadata in this dir and store them into Database
-	// One on one
-	for (int i = 0; i < meta->contents->size; i++) {
-		drbMetadata* entry = meta->contents->array[i];
-
-		//Get all the values needed for the database table
-		char* mtime;
-		char* type;
-		char *is_modified;
-		char* revision;
-		char *fpath = 0;
-		bb_fullpath(fpath, path);
-		char *is_deleted;
-		char* size;
-		char* parent_folder;
-		char* basename(fpath);
-
-		//Prepair the SQL statement
-		char* sql1= "INSERT INTO Directory WITH VALUES(";
-		char* sql2 = ", ";
-
-
-
-		is_modified = entry->modified;
-		fpath = entry->path;
-		is_deleted = entry->isDeleted;
-		size = entry->size;
-		parent_folder = entry->root;
-		revision = entry->revision;
-		mtime = entry->clientMtime;
-
-
-		if(*entry->isDir == 1){
-			type = "1";
-		}else{
-			type = "2";
-		}
-
-		//Construct SQL statement
-		char* sql_insert_dir="";
-//				(char*)malloc(30+strlen(sql1)+strlen(sql2)*9+strlen(fpath)+strlen(basename)+strlen(parent_folder)+strlen(type)+strlen(size)+strlen(mtime)*2);;
-		strncpy(sql_insert_dir, sql1, strlen(sql1)+1);
-		strncpy(sql_insert_dir, fpath, strlen(fpath)+1);
-		strncpy(sql_insert_dir, sql2, strlen(sql2)+1);
-		strncpy(sql_insert_dir, basename, strlen(basename)+1);
-		strncpy(sql_insert_dir, sql2, strlen(sql2)+1);
-		strncpy(sql_insert_dir, parent_folder, strlen(parent_folder)+1);
-		strncpy(sql_insert_dir, sql2, strlen(sql2)+1);
-		strncpy(sql_insert_dir, type, strlen(type)+1);
-		strncpy(sql_insert_dir, sql2, strlen(sql2)+1);
-		strncpy(sql_insert_dir, size, strlen(size)+1);
-		strncpy(sql_insert_dir, sql2, strlen(sql2)+1);
-		strncpy(sql_insert_dir, mtime, strlen(mtime)+1);
-		strncpy(sql_insert_dir, sql2, strlen(sql2)+1);
-		strncpy(sql_insert_dir, mtime, strlen(mtime)+1);
-		strncpy(sql_insert_dir, sql2, strlen(sql2)+1);
-		strncpy(sql_insert_dir, "0, ",4);
-		strncpy(sql_insert_dir, is_modified, 2);
-		strncpy(sql_insert_dir, sql2, strlen(sql2)+1);
-		strncpy(sql_insert_dir, "0, ", 4);
-		strncpy(sql_insert_dir, is_deleted, 2);
-		strncpy(sql_insert_dir, sql2, strlen(sql2)+1);
-		strncpy(sql_insert_dir, "0, ",4);
-		strncpy(sql_insert_dir, revision, strlen(revision)+1);
-		strncpy(sql_insert_dir, ");", 3);
-
-		rc = sqlite3_exec(db1, sql_insert_dir, 0, 0, &zErrMsg);
-		log_msg("\nsql_insert_dir: %s\n", sql_insert_dir);
-
-		if( rc!=SQLITE_OK ){
-		           fprintf(stderr, "SQL error: %s\n", zErrMsg);
-		           sqlite3_free(zErrMsg);
-		                }
-
-		int lastSlashPos = getLastSlashPosition(entry->path);
-		if (filler(buf, entry->path + lastSlashPos, NULL, 0) != 0) {
-				log_msg("    ERROR bb_readdir filler:  buffer full\n");
-				return -ENOMEM;
-		}
-
-
-		log_msg("bb_readdir - filler: %s.\n", entry->path + lastSlashPos);
-
-				                }
-
-	rc = sqlite3_exec(db1, "Commit;", 0, 0, &zErrMsg);
-	if( rc!=SQLITE_OK ){
-		fprintf(stderr, "SQL error: %s\n", zErrMsg);
-		sqlite3_free(zErrMsg);
+	char* path_in_sqlite = path;
+	if (strlen(path) == 1){
+		path_in_sqlite = "\0";
 	}
-	drbDestroyMetadata(meta, true);
 
-	return 0;
-
-
+	int ret = 0;
+	int dir_cnt = 0;
+	directory** sub_dirs = search_subdirectories(BB_DATA->sqlite_conn, path_in_sqlite, &dir_cnt);
+	if (sub_dirs ！= NULL){
+		for (int i = 0; i < dir_cnt; ++i){
+			if (filler(buf, sub_dirs[i]->entry_name, NULL, 0) != 0) {
+				ret = ENOMEM;
+				break;
+			}
+		}
+	}
+	free_directories(sub_dirs, dir_cnt);
+	log_msg("ibc_readdir: Complted [%s]\n", path);
+	return ret;
 }
 
 /** Release directory
  *
  * Introduced in version 2.3
  */
-int bb_releasedir(const char *path, struct fuse_file_info *fi)
+int ibc_releasedir(const char *path, struct fuse_file_info *fi)
 {
-	log_msg("\nbb_releasedir: %s\n", path);
+	log_msg("\nibc_releasedir: %s\n", path);
 	return 0;
 }
 
@@ -1307,7 +1278,7 @@ int bb_ftruncate(const char *path, off_t offset, struct fuse_file_info *fi)
  */
 int ibc_getattr(const char *path, struct stat *statbuf)
 {
-    log_msg("\nbb_getattr: %s\n", path);
+    log_msg("\nibc_getattr: %s\n", path);
 
 #ifdef VMWARE
     //Skip some strange files which do not exit
@@ -1333,64 +1304,48 @@ int ibc_getattr(const char *path, struct stat *statbuf)
 	}
 #endif
 
-	void * output = NULL;
+    int ret = 0;
+    //clear memory
+	memset(statbuf, 0, sizeof(struct stat));
 
-	memset(statbuf, 0, sizeof(struct stat)); //clear memory
+	char* path_in_sqlite = path;
+	if (strlen(path) == 1){
+		path_in_sqlite = "\0";
+	}
 
-	int err = drbGetMetadata(BB_DATA->client, &output,
-						 DRBOPT_PATH, path,
-						 DRBOPT_LIST, true,
-						 //                     DRBOPT_FILE_LIMIT, 100,
-						 DRBOPT_END);
-	if (err != DRBERR_OK) {
-		log_msg("Metadata error (%d): %s\n", err, (char*)output);
-		free(output);
-	} else {
+	log_msg("ibc_getattr: search_directory [%s]\n", path_in_sqlite);
+	directory* dir = search_directory(BB_DATA->sqlite_conn, path_in_sqlite);
 
-//		drbClient* cli = BB_DATA->client;
-		sqlite3* db1 = BB_DATA->sqlite_conn;
-		char fpath[PATH_MAX];
-		bb_fullpath(fpath, path);
-		int rc;
-		char *zErrMsg = 0;
-		directory *result = search_directory(db1, fpath);
-
-//		drbMetadata* meta = (drbMetadata*)output;
-		//displayMetadata(meta, "Metadata");
-		statbuf->st_size = result->size;
+	if (dir != NULL){
+		log_msg("ibc_getattr: fill in statbuf\n");
+		statbuf->st_size = dir->size;
 		statbuf->st_uid = getuid();
 		statbuf->st_gid = getgid();
-//		statbuf->st_atime = mtime;// = "access time";
-//		statbuf->st_ctime = mtime; //= "change time";
-//		statbuf->st_mtime = mtime;// = "modify time";
-//		log_msg("\nget mtime: %s\n", mtime);
-		if (result->type == "2")
+		statbuf->st_atime = dir->atime;// = "access time";
+		statbuf->st_ctime = dir->mtime; //= "change time";
+		statbuf->st_mtime = dir->mtime;// = "modify time";
+
+		if (dir->type == 1)
 		{
 			statbuf->st_mode = S_IFDIR | 0755;
-
-			//increase nlink if there are subfolders
-			int subdirCount = 0;
-//			for (int i = 0; i < meta->contents->size; i++) {
-//				drbMetadata* entry = meta->contents->array[i];
-//				if (*(entry->isDir))
-//				{
-//					++subdirCount;
-//				}
-//			}
-//			statbuf->st_nlink = 2 + subdirCount;
+			statbuf->st_nlink = 2;
 		}
 		else
 		{
 			statbuf->st_mode = S_IFREG | 0755;
 			statbuf->st_nlink = 1;
 		}
-
-		free_directory(result);
-
 		log_stat(statbuf);
+	} else {
+		ret = EBADF;
 	}
 
-	return err;
+
+	free_directory(dir);
+
+	log_msg("ibc_getattr: Completed.\n");
+
+	return ret;
 }
 
 
@@ -1406,50 +1361,12 @@ int ibc_getattr(const char *path, struct stat *statbuf)
  *
  * Introduced in version 2.5
  */
-int bb_fgetattr(const char *path, struct stat *statbuf, struct fuse_file_info *fi)
+int ibc_fgetattr(const char *path, struct stat *statbuf, struct fuse_file_info *fi)
 {
-	/*
-    int retstat = 0;
-
-    log_msg("\nbb_fgetattr(path=\"%s\", statbuf=0x%08x, fi=0x%08x)\n",
-	    path, statbuf, fi);
-    log_fi(fi);
-
-    // On FreeBSD, trying to do anything with the mountpoint ends up
-    // opening it, and then using the FD for an fgetattr.  So in the
-    // special case of a path of "/", I need to do a getattr on the
-    // underlying root directory instead of doing the fgetattr().
-    if (!strcmp(path, "/"))
-	return bb_getattr(path, statbuf);
-
-    retstat = fstat(fi->fh, statbuf);
-    if (retstat < 0)
-	retstat = bb_error("bb_fgetattr fstat");
-
-    log_stat(statbuf);
-
-    return retstat;
-*/
-
-    log_msg("\nbb_fgetattr: %s", path);
-    void * output = NULL;
-	int err = drbGetMetadata(BB_DATA->client, &output,
-						 DRBOPT_PATH, path,
-						 DRBOPT_LIST, true,
-						 //                     DRBOPT_FILE_LIMIT, 100,
-						 DRBOPT_END);
-	if (err != DRBERR_OK) {
-		printf("Metadata error (%d): %s\n", err, (char*)output);
-		free(output);
-	} else {
-
-		drbMetadata* meta = (drbMetadata*)output;
-		//displayMetadata(meta, "Metadata");
-		statbuf->st_size = *(meta->size);
-
-		drbDestroyMetadata(meta, true);
-	}
-	return err;
+	log_msg("\nibc_fgetattr: %s\n", path);
+	int ret = ibc_getattr(path, statbuf, fi);
+	log_msg("ibc_fgetattr: Completed\n");
+	return ret;
 }
 
 struct fuse_operations bb_oper = {
@@ -1486,16 +1403,16 @@ struct fuse_operations bb_oper = {
 	  removexattr = bb_removexattr,
 	#endif
 	*/
-	  .opendir = bb_opendir,
-	  .readdir = bb_readdir,
-	  .releasedir = bb_releasedir,
+	  .opendir = ibc_opendir,
+	  .readdir = ibc_readdir,
+	  .releasedir = ibc_releasedir,
 	  //fsyncdir = bb_fsyncdir,
-	  .init = bb_init,
-	  .destroy = bb_destroy,
-	  .access = bb_access,
+	  .init = ibc_init,
+	  .destroy = ibc_destroy,
+	  .access = ibc_access,
 	  //create = bb_create,
 	  //ftruncate = bb_ftruncate,
-	  //fgetattr = bb_fgetattr
+	  fgetattr = ibc_fgetattr
 };
 
 void bb_usage()
@@ -1516,7 +1433,6 @@ static int callback(void *NotUsed, int argc, char **argv, char **azColName){
 
 int main(int argc, char *argv[])
 {
-
     int fuse_stat;
     struct bb_state *bb_data;
     // bbfs doesn't do any access checking on its own (the comment
@@ -1529,8 +1445,8 @@ int main(int argc, char *argv[])
     // user doing it with the allow_other flag is still there because
     // I don't want to parse the options string.
     if ((getuid() == 0) || (geteuid() == 0)) {
-	fprintf(stderr, "Running BBFS as root opens unnacceptable security holes\n");
-	return 1;
+    	fprintf(stderr, "Running BBFS as root opens unnacceptable security holes\n");
+    	return 1;
     }
 
     char *c_key    = "d9m9s1iylifpqsx";  //< consumer key
@@ -1564,8 +1480,8 @@ int main(int argc, char *argv[])
     bb_data = malloc(sizeof(struct bb_state));
 
     if (bb_data == NULL) {
-	perror("main calloc");
-	abort();
+    	perror("main calloc");
+    	abort();
     }
 
 
@@ -1576,12 +1492,12 @@ int main(int argc, char *argv[])
     argv[argc-1] = NULL;
     argc--;
 
-    bb_data->logfile = log_open();
+    bb_data->logfile = log_open("bbfs.log");
     bb_data->client = cli;
 
     sqlite3 *sqlite_conn = init_db("dir.db");
     bb_data->sqlite_conn = sqlite_conn;
-    test_sqlite_insert(sqlite_conn);
+    //test_sqlite_insert(sqlite_conn);
 
 
     // turn over control to fuse
