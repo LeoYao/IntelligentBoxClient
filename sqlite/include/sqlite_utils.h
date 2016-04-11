@@ -45,5 +45,9 @@ int begin_transaction(sqlite3* db);
 int commit_transaction(sqlite3* db);
 int rollback_transaction(sqlite3* db);
 
+void free_lru(lru_entry* lru);
 lru_entry* select_lru(sqlite3* db, const char* path);
+int insert_lru(sqlite3* db, lru_entry* lru);
+int delete_lru(sqlite3* db, const char* path);
+int update_lru(sqlite3* db, lru_entry* lru);
 #endif /* SQLITE_UTILS_H_ */
