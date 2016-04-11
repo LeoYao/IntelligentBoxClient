@@ -22,5 +22,5 @@ int getLastSlashPosition(const char* path);
 int expand_mem(void** ptr, int size);
 char* copy_text(const char* tmp);
 char* substring(const char* str, int start, int end);
-
+char* get_parent_path(const char* path);
 #endif /* COMMON_UTILS_HPP_ */

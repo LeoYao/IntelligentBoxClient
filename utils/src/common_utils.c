@@ -123,3 +123,22 @@ char* substring(const char* str, int start, int end){
 
 	return result;
 }
+
+char* get_parent_path(const char* path){
+	char* parent_path = NULL;
+
+	int len = strlen(path);
+	for (int i = len - 1; i >= 0; i--){
+		if (path[i] == '/'){
+			parent_path = substring(path, 0, i);
+			break;
+		}
+	}
+
+	if (parent_path == NULL){
+		parent_path = (char*)malloc(sizeof(char));
+		parent_path[0] = '\0';
+	}
+
+	return parent_path;
+}
