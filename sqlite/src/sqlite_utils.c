@@ -7,11 +7,85 @@
 
 #include <sqlite_utils.h>
 
+
 #include <common_utils.h>
 #include <params.h>
 
 static char* HEAD = ".head";
 static char* TAIL = ".tail";
+
+int search_metadata(sqlite3* db, char* full_path){
+	int *i = 0;
+	directory* data;
+	sqlite3_stmt *res;
+	int rc;
+	char* sql = "SELECT * FROM Directory WHERE full_path = ?";
+	rc = sqlite3_prepare_v2(db, sql, -1, &res, 0);
+	printf("1");
+	if( rc == SQLITE_OK){
+		sqlite3_bind_text(res, 1, full_path, -1, SQLITE_TRANSIENT);
+	}else{
+        fprintf(stderr, "Failed to execute statement: %s\n", sqlite3_errmsg(db));
+        log_msg("\nError Occured Searching for metadata: %s\n", sqlite3_errmsg(db));
+	}
+	int step = sqlite3_step(res);
+
+
+	if( step == SQLITE_ROW){
+		i++;
+		data->full_path = sqlite3_column_text(res, 0);
+		data->parent_folder_full_path = sqlite3_column_text(res,1);
+		data->entry_name  = sqlite3_column_text(res, 2);
+		data->old_full_path = sqlite3_column_text(res, 3);
+		data->type = sqlite3_column_text(res, 4);
+		data->size = sqlite3_column_text(res, 5);
+		data->atime = sqlite3_column_text(res, 6);
+		data->mtime = sqlite3_column_text(res, 7);
+		data->is_locked = sqlite3_column_text(res, 8);
+		data->is_modified = sqlite3_column_text(res, 9);
+		data->is_local = sqlite3_column_text(res, 10);
+		data->is_delete = sqlite3_column_text(res, 11);
+		data->in_use_count = sqlite3_column_text(res, 12);
+		data->revision = sqlite3_column_text(res, 13);
+		log_msg("\nSuccessfully get all the metadata of file %s\n", data->full_path);
+		log_msg("\nSuccessfully get all the metadata of file %s\n", data->entry_name);
+		log_msg("\nSuccessfully get all the metadata of file %s\n", data->mtime);
+		log_msg("\nSuccessfully get all the metadata of file %s\n", data->is_local);
+
+	}else if( step == SQLITE_DONE && i == "0"){
+		log_msg("\nNo Such Directory Can Be Found!\n");
+	}
+
+	sqlite3_finalize(res);
+	return 0;
+}
+
+int update_isLocal(sqlite3* db, char* full_path){
+	char *err_msg = 0;
+	sqlite3_stmt *res;
+	int rc;
+	char* sql = "UPDATE Directory SET is_local = 1 WHERE full_path = ?\0";
+	rc = sqlite3_prepare_v2(db, sql, -1, &res, 0);
+	if(rc == SQLITE_OK){
+		sqlite3_bind_text(res, 1, full_path, -1, SQLITE_TRANSIENT);
+	}else {
+
+        fprintf(stderr, "Failed to execute statement: %s\n", sqlite3_errmsg(db));
+        log_msg("\nError Occured Updating is_local: %s\n", sqlite3_errmsg(db));
+	}
+	int step = sqlite3_step(res);
+	 if( step== SQLITE_DONE){
+	 log_msg("\nis_local UPDATED!\n");
+	 }else if(step ==SQLITE_BUSY){
+		 log_msg("\nSQLITE IS BUSY!");
+	 }else{
+		 log_msg("\nAn Error Has Occured: %s\n", sqlite3_errmsg(db));
+	 }
+
+	 sqlite3_free(err_msg);
+	return 0;
+}
+
 
 int insert_directory(sqlite3* db, directory* data){
 	char *err_msg = 0;

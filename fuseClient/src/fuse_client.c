@@ -1150,30 +1150,16 @@ int bb_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset
 	int rc;
 	char *zErrMsg = 0;
 
-		time_t now;
-		struct tm ts;
-		char buff[80];
-		time(&now);
-		ts = *localtime(&time);
-		strftime(buff, sizeof(buf), "%a %Y-%m-%d %H:%M:%S %Z", &ts);
+//		time_t now;
+//		struct tm ts;
+//		char buff[80];
+//		time(&now);
+//		ts = *localtime(&time);
+//		strftime(buff, sizeof(buf), "%a %Y-%m-%d %H:%M:%S %Z", &ts);
 
-		char* sql_begin = "BEGIN TRANSACTION";
 //		drbClient* cli = BB_DATA->client;
 		sqlite3* db1 = BB_DATA->sqlite_conn;
 
-		    //Begin transaction to database
-		    rc = sqlite3_exec(db1, sql_begin, 0, 0, &zErrMsg);
-		    //If SQLITE is busy, retry twice, if still busy then abort
-		    for(int i=0;i<2;i++){
-		        if(rc == SQLITE_BUSY){
-		       		delay(50);
-		       		rc = sqlite3_exec(db1, sql_begin, 0, 0, &zErrMsg);
-		       	}else{
-		       		break;
-		       	}
-		    }
-		    // If after 2 tries and if still cannot start the transaction
-		    // Just abort
 
 	// Get all the file's metadata in this dir and store them into Database
 	// One on one
@@ -1617,6 +1603,7 @@ int main(int argc, char *argv[])
     sqlite3 *sqlite_conn = init_db("dir.db");
     bb_data->sqlite_conn = sqlite_conn;
 
+
     // turn over control to fuse
     fprintf(stderr, "about to call fuse_main\n");
     fuse_stat = fuse_main(argc, argv, &bb_oper, bb_data);
@@ -1643,8 +1630,11 @@ void test_sqlite_insert(sqlite3* db){
 	data->is_delete = 0;
 	data->in_use_count = 5;
 	data->revision = "e";
+	char* fpathtest = "a";
 
 	insert_directory(db, data);
+	update_isLocal(db, fpathtest);
+	search_metadata(db, "b");
 
 	free(data);
 
