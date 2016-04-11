@@ -290,65 +290,74 @@ sqlite3* init_db(char* dbfile_path){
 	// Create a table Directory for storage several metadata on the files
 	// Or on Dropbox. If table already exists, ignore the SQL.
 	char *sql = "CREATE TABLE IF NOT EXISTS Directory (full_path varchar(4000) PRIMARY KEY, parent_folder_full_path varchar(4000), entry_name varchar(255), old_full_path varchar(4000), type integer, size integer, mtime datetime, atime datetime, is_locked integer, is_modified integer, is_local integer, is_deleted integer, in_use_count integer, revision string);\0";
-	log_msg("\ncreate_db: %s\n", sql);
+	log_msg("init_db: Creating table DIRECTORY\n", sql);
 	rc = sqlite3_exec(sqlite_conn, sql, 0, 0, &zErrMsg);
 	if( rc!=SQLITE_OK ){
-		log_msg("SQL error: %s\n", zErrMsg);
+		log_msg("init_db: Failed to create table DIRECTORY. Error message: %s\n", zErrMsg);
 		sqlite3_free(zErrMsg);
 	}
+	log_msg("init_db: Completed creating table DIRECTORY\n", sql);
 
 	//Insert initial record for root folder
 	unsigned int epoch_now = time(NULL);
 	char epoch_now_str[15];
-	for (int i = 0; i < 15; i++){
-		epoch_now_str[i] = '\0';
-	}
+	memset(epoch_now_str, '\0', 15);
 	sprintf(epoch_now_str, "%u", epoch_now);
 	sql = concat_string(6,
-			"insert or ignore into directory (full_path, parent_folder_full_path, entry_name, old_full_path, type, size, mtime, atime, is_locked, is_modified, is_local, is_deleted, in_use_count, revision)\0",
-			"values('','.','','',1,0,\0",
+			"insert or ignore into directory (full_path, parent_folder_full_path, entry_name, old_full_path, type, size, mtime, atime, is_locked, is_modified, is_local, is_deleted, in_use_count, revision)",
+			"values('','.','','',1,0,",
 			epoch_now_str,
-			",\0",
+			",",
 			epoch_now_str,
-			",0,0,0,0,0,'')\0");
+			",0,0,0,0,0,'')");
 
+	log_msg("init_db: Initializing table DIRECTORY\n", sql);
 	rc = sqlite3_exec(sqlite_conn, sql, 0, 0, &zErrMsg);
 	if( rc!=SQLITE_OK ){
-		log_msg("SQL error: %s\n", zErrMsg);
+		log_msg("init_db: Failed to initialize table DIRECTORY. Error message: %s\n", zErrMsg);
 		sqlite3_free(zErrMsg);
 	}
+	log_msg("init_db: Completed initializing table DIRECTORY\n", sql);
 	free(sql);
 
 
 	sql = "create table if not exists LOCK (dummy char(1));";
+	log_msg("init_db: createing table LOCK\n", sql);
 	rc = sqlite3_exec(sqlite_conn, sql, 0, 0, &zErrMsg);
 	if( rc!=SQLITE_OK ){
-		log_msg("SQL error: %s\n", zErrMsg);
+		log_msg("init_db: Failed to create table LOCK. Error message: %s\n", zErrMsg);
 		sqlite3_free(zErrMsg);
 	}
+	log_msg("init_db: Completed creating table LOCK\n", sql);
 
 	sql = concat_string(2,
 			"create table if not exists LRU_QUEUE\n",
 	    	"(curr varchar(4000)  PRIMARY KEY,prev varchar(4000),next varchar(4000));");
+	log_msg("init_db: creating table LRU_QUEUE\n", sql);
 	rc = sqlite3_exec(sqlite_conn, sql, 0, 0, &zErrMsg);
 	if( rc!=SQLITE_OK ){
-		log_msg("SQL error: %s\n", zErrMsg);
+		log_msg("init_db: Failed to create table LRU_QUEUE. Error message: %s\n", zErrMsg);
 		sqlite3_free(zErrMsg);
 	}
+	log_msg("init_db: Completed creating table LRU_QUEUE\n", sql);
 
 	sql = "insert or ignore into lru_queue (curr, next) values('.head', '.tail');";
+	log_msg("init_db: initializing table LRU_QUEUE (head)\n", sql);
 	rc = sqlite3_exec(sqlite_conn, sql, 0, 0, &zErrMsg);
 	if( rc!=SQLITE_OK ){
-		log_msg("SQL error: %s\n", zErrMsg);
+		log_msg("init_db: Failed to initalize table LRU_QUEUE (head). Error message: %s\n", zErrMsg);
 		sqlite3_free(zErrMsg);
 	}
+	log_msg("init_db: Completed initalize table LRU_QUEUE (head)\n", sql);
 
 	sql = "insert or ignore into lru_queue (curr, prev) values('.tail', '.head');";
+	log_msg("init_db: initializing table LRU_QUEUE (tail)\n", sql);
 	rc = sqlite3_exec(sqlite_conn, sql, 0, 0, &zErrMsg);
 	if( rc!=SQLITE_OK ){
-		log_msg("SQL error: %s\n", zErrMsg);
+		log_msg("init_db: Failed to initalize table LRU_QUEUE (tail). Error message: %s\n", zErrMsg);
 		sqlite3_free(zErrMsg);
 	}
+	log_msg("init_db: Completed initalize table LRU_QUEUE (head)\n", sql);
 
 	return (sqlite_conn);
 }
