@@ -1366,7 +1366,7 @@ struct fuse_operations bb_oper = {
 	  .access = ibc_access,
 	  //create = bb_create,
 	  //ftruncate = bb_ftruncate,
-	  fgetattr = ibc_fgetattr
+	  .fgetattr = ibc_fgetattr
 };
 
 void bb_usage()
