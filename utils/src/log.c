@@ -27,13 +27,13 @@
 
 extern int is_log_to_file;
 
-FILE *log_open()
+FILE *log_open(const char* log_path)
 {
     FILE *logfile;
     
     // very first thing, open up the logfile and mark that we got in
     // here.  If we can't open the logfile, we're dead.
-    logfile = fopen("bbfs.log", "w");
+    logfile = fopen(log_path, "w");
     if (logfile == NULL) {
 	perror("logfile");
 	exit(EXIT_FAILURE);
