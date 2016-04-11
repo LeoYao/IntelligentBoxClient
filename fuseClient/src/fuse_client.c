@@ -1005,21 +1005,25 @@ int ibc_opendir(const char *path, struct fuse_file_info *fi)
 {
 	log_msg("\nibc_opendir: %s\n", path);
 
-	directory* dir = search_directory(BB_DATA->sqlite_conn, path);
-	if (dir == NULL){
-		return ENOENT;
-	}
-
-	if (dir->type != 1){
-		return ENOTDIR;
-	}
-
 	char* parent_path = get_parent_path(path);
 	char* path_in_sqlite = path;
 	char* parent_path_in_sqlite = get_parent_path(path);
 	if (strlen(path) == 1){
 		path_in_sqlite = "\0";
 		parent_path_in_sqlite = copy_text(".\0");
+	}
+
+	directory* dir = search_directory(BB_DATA->sqlite_conn, path_in_sqlite);
+	if (dir == NULL){
+		free(parent_path);
+		free(parent_path_in_sqlite);
+		return ENOENT;
+	}
+
+	if (dir->type != 1){
+		free(parent_path);
+		free(parent_path_in_sqlite);
+		return ENOTDIR;
 	}
 
 	//Get local full path
@@ -1379,18 +1383,16 @@ int main(int argc, char *argv[])
 	// User key and secret. Leave them NULL or set them with your AccessToken.
 	char *t_key    = "8pfo7r8fjml1xo6i"; // iihdh3t3dcld9svd < access token key
 	char *t_secret = "m4glqxs42dcop4i";  // 0fw3qvfrqo1dlxx < access token secret
-//	char *t_key    = "iihdh3t3dcld9svd"; //< access token key
-//	char *t_secret = "0fw3qvfrqo1dlxx";  //< access token secret
+	//char *t_key    = "iihdh3t3dcld9svd"; //< access token key
+	//char *t_secret = "0fw3qvfrqo1dlxx";  //< access token secret
 
 	// Global initialisation
 	drbInit();
 
 	// Create a Dropbox client
 	drbClient* cli = drbCreateClient(c_key, c_secret, t_key, t_secret);
-
     // Set default arguments to not repeat them on each API call
 	drbSetDefault(cli, DRBOPT_ROOT, DRBVAL_ROOT_AUTO, DRBOPT_END);
-
 
     // Perform some sanity checking on the command line:  make sure
     // there are enough arguments, and that neither of the last two
@@ -1400,14 +1402,11 @@ int main(int argc, char *argv[])
     if ((argc < 3) || (argv[argc-2][0] == '-') || (argv[argc-1][0] == '-'))
 	bb_usage();
 
-
     bb_data = malloc(sizeof(struct bb_state));
-
     if (bb_data == NULL) {
     	perror("main calloc");
     	abort();
     }
-
 
     // Pull the rootdir out of the argument list and save it in my
     // internal data
@@ -1422,7 +1421,6 @@ int main(int argc, char *argv[])
     sqlite3 *sqlite_conn = init_db("dir.db");
     bb_data->sqlite_conn = sqlite_conn;
     //test_sqlite_insert(sqlite_conn);
-
 
     // turn over control to fuse
     fprintf(stderr, "about to call fuse_main\n");

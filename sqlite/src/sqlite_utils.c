@@ -209,9 +209,8 @@ directory** search_subdirectories(sqlite3* db, char* parent_path, int* count){
 		while(rc == SQLITE_ROW){
 			datas[*count] = populate_directory(stmt);
 			*count = *count + 1;
-
 			if (*count == capacity){
-				if (expand_mem(&datas, capacity) == EXPAND_OK){
+				if (expand_mem(&datas, capacity * sizeof(directory*)) == EXPAND_OK){
 					capacity *= 2;
 				} else {
 					log_msg("search_metadata: Failed to expand data.");
@@ -227,7 +226,6 @@ directory** search_subdirectories(sqlite3* db, char* parent_path, int* count){
 	}
 
 	sqlite3_finalize(stmt);
-
 	log_msg("search_subdirectories: Completed\n");
 	return datas;
 }

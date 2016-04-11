@@ -83,9 +83,8 @@ char* concat_string(const int n, ...){
 
 int expand_mem(void** ptr, int size){
 	if (ptr == NULL || size == 0){
-		return NULL;
+		return -1;
 	}
-
 	void* result = realloc(*ptr, size * 2);
 	if (result != NULL){
 		*ptr = result;

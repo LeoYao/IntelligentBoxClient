@@ -63,7 +63,6 @@ long parse_time(char* time_string){
 	t.tm_mon = mon;           // Month, 0 - jan
 	t.tm_mday = day;
 	t.tm_hour = (hour -1 + 20) % 24 + 1;
-	log_msg("hour: %ld", hour);
 	t.tm_min = min;
 	t.tm_sec = sec;
 	t.tm_isdst = 0;        // Is DST on? 1 = yes, 0 = no, -1 = unknown
@@ -95,11 +94,11 @@ int get_dbx_metadata(drbClient* cli, drbMetadata** metadata_ref, const char* rem
 			break;
 		} else if (err == DRBERR_TIMEOUT){
 			log_msg("get_metadata: Timeout for [%s], Retried Times [%d]\n", path, i);
-			free(*metadata_ref);
+			drbDestroyMetadata(*metadata_ref, true);
 			delay(1000);
 		} else {
 			log_msg("get_metadata: Failed for [%s]. Error code: [%d]\n", path, err);
-			free(*metadata_ref);
+			drbDestroyMetadata(*metadata_ref, true);
 			break;
 		}
 	}
@@ -131,11 +130,11 @@ int download_dbx_file(drbClient* cli, drbMetadata** metadata_ref, const char* re
 			break;
 		} else if (err == DRBERR_TIMEOUT){
 			log_msg("download_file: Timeout for [%s] to [%s], Retried Times [%d]\n", remote_path, local_path, i);
-			free(*metadata_ref);
+			drbDestroyMetadata(*metadata_ref, true);
 			delay(1000);
 		} else {
 			log_msg("download_file: Failed for [%s] to [%s]. Error code: [%d]\n", remote_path, local_path, err);
-			free(*metadata_ref);
+			drbDestroyMetadata(*metadata_ref, true);
 			break;
 		}
 	}
