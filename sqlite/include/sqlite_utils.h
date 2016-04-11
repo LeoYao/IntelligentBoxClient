@@ -18,8 +18,8 @@ struct directory
 	char* old_full_path;
 	int type;
 	int size;
-	long mtime;
-	long atime;
+	sqlite_int64 mtime;
+	sqlite_int64 atime;
 	int is_locked;
 	int is_modified;
 	int is_local;
@@ -40,7 +40,26 @@ struct lru_entry
 typedef struct lru_entry lru_entry;
 
 sqlite3* init_db(char* dbfile_path);
+
+directory* new_directory(const char* full_path,
+		const char* parent_folder_full_path,
+		const char* entry_name,
+		const char* old_full_path,
+		int type,
+		int size,
+		sqlite_int64 mtime,
+		sqlite_int64 atime,
+		int is_locked,
+		int is_modified,
+		int is_local,
+		int is_delete,
+		int in_use_count,
+		char* revision);
+void free_directory(directory* lru);
+directory* search_directory(sqlite3* db, char* full_path);
+int update_isLocal(sqlite3* db, char* full_path);
 int insert_directory(sqlite3* db, directory* data);
+
 int begin_transaction(sqlite3* db);
 int commit_transaction(sqlite3* db);
 int rollback_transaction(sqlite3* db);

@@ -14,121 +14,205 @@
 static char* HEAD = ".head";
 static char* TAIL = ".tail";
 
-int search_metadata(sqlite3* db, char* full_path){
-	int *i = 0;
-	directory* data;
-	sqlite3_stmt *res;
+
+char* copy_text(const char* tmp){
+	char* result = NULL;
+	if (tmp != NULL){
+		int len = strlen(tmp);
+		result = (char*)malloc((len + 1)*sizeof(char));
+		strncpy(result, tmp, len);
+		result[len] = '\0';
+	} else {
+		result = (char*)malloc(sizeof(char));
+		result[0] = '\0';
+	}
+
+	return result;
+}
+
+char* get_text(sqlite3_stmt* stmt, int col){
+	char* result = NULL;
+	char* tmp = sqlite3_column_text(stmt, col);
+	result = copy_text(tmp);
+	return result;
+}
+
+directory* new_directory(
+		const char* full_path,
+		const char* parent_folder_full_path,
+		const char* entry_name,
+		const char* old_full_path,
+		int type,
+		int size,
+		sqlite_int64 mtime,
+		sqlite_int64 atime,
+		int is_locked,
+		int is_modified,
+		int is_local,
+		int is_delete,
+		int in_use_count,
+		char* revision
+		){
+	directory* data = malloc(sizeof(directory));
+
+	data->full_path = copy_text(full_path);
+	data->parent_folder_full_path = copy_text(parent_folder_full_path);
+	data->entry_name = copy_text(entry_name);
+	data->old_full_path = copy_text(old_full_path);
+	data->type = type;
+	data->size = size;
+	data->mtime = mtime;
+	data->atime = atime;
+	data->is_locked = is_locked;
+	data->is_modified = is_modified;
+	data->is_local = is_local;
+	data->is_delete = is_delete;
+	data->in_use_count = in_use_count;
+	data->revision = copy_text(revision);
+
+	return data;
+}
+void free_directory(directory* dir){
+	if (dir == NULL){
+		return;
+	}
+
+	free(dir->full_path);
+	free(dir->entry_name);
+	free(dir->old_full_path);
+	free(dir->parent_folder_full_path);
+	free(dir->revision);
+
+	free(dir);
+}
+
+
+directory* search_directory(sqlite3* db, char* full_path){
+
+	log_msg("\nsearch_metadata: Begin\n");
+	directory* data = NULL;
+	sqlite3_stmt *stmt;
 	int rc;
 	char* sql = "SELECT * FROM Directory WHERE full_path = ?";
-	rc = sqlite3_prepare_v2(db, sql, -1, &res, 0);
-	printf("1");
+
+	rc = sqlite3_prepare_v2(db, sql, -1, &stmt, 0);
+
 	if( rc == SQLITE_OK){
-		sqlite3_bind_text(res, 1, full_path, -1, SQLITE_TRANSIENT);
-	}else{
-        fprintf(stderr, "Failed to execute statement: %s\n", sqlite3_errmsg(db));
-        log_msg("\nError Occured Searching for metadata: %s\n", sqlite3_errmsg(db));
-	}
-	int step = sqlite3_step(res);
-
-
-	if( step == SQLITE_ROW){
-		i++;
-		data->full_path = sqlite3_column_text(res, 0);
-		data->parent_folder_full_path = sqlite3_column_text(res,1);
-		data->entry_name  = sqlite3_column_text(res, 2);
-		data->old_full_path = sqlite3_column_text(res, 3);
-		data->type = sqlite3_column_text(res, 4);
-		data->size = sqlite3_column_text(res, 5);
-		data->atime = sqlite3_column_text(res, 6);
-		data->mtime = sqlite3_column_text(res, 7);
-		data->is_locked = sqlite3_column_text(res, 8);
-		data->is_modified = sqlite3_column_text(res, 9);
-		data->is_local = sqlite3_column_text(res, 10);
-		data->is_delete = sqlite3_column_text(res, 11);
-		data->in_use_count = sqlite3_column_text(res, 12);
-		data->revision = sqlite3_column_text(res, 13);
-		log_msg("\nSuccessfully get all the metadata of file %s\n", data->full_path);
-		log_msg("\nSuccessfully get all the metadata of file %s\n", data->entry_name);
-		log_msg("\nSuccessfully get all the metadata of file %s\n", data->mtime);
-		log_msg("\nSuccessfully get all the metadata of file %s\n", data->is_local);
-
-	}else if( step == SQLITE_DONE && i == "0"){
-		log_msg("\nNo Such Directory Can Be Found!\n");
+		log_msg("search_metadata: Statement is prepared: %s\n", sql);
+		sqlite3_bind_text(stmt, 1, full_path, -1, SQLITE_TRANSIENT);
+		log_msg("search_metadata: Statement is binded.\n");
+	} else {
+		log_msg("search_metadata: Failed to prepare statement. Error message: %s\n", sqlite3_errmsg(db));
 	}
 
-	sqlite3_finalize(res);
-	return 0;
+	if (rc == SQLITE_OK) {
+		rc = sqlite3_step(stmt);
+
+		if( rc == SQLITE_ROW){
+			data = malloc(sizeof(directory));
+			data->full_path = get_text(stmt, 0);
+			data->parent_folder_full_path = get_text(stmt,1);
+			data->entry_name  = get_text(stmt, 2);
+			data->old_full_path = get_text(stmt, 3);
+			data->type = sqlite3_column_int(stmt, 4);
+			data->size = sqlite3_column_int(stmt, 5);
+			data->atime = sqlite3_column_int64(stmt, 6);
+			data->mtime = sqlite3_column_int64(stmt, 7);
+			data->is_locked = sqlite3_column_int(stmt, 8);
+			data->is_modified = sqlite3_column_int(stmt, 9);
+			data->is_local = sqlite3_column_int(stmt, 10);
+			data->is_delete = sqlite3_column_int(stmt, 11);
+			data->in_use_count = sqlite3_column_int(stmt, 12);
+			data->revision = get_text(stmt, 13);
+
+		} else if (rc == SQLITE_DONE){
+			log_msg("search_metadata: No record is found for path [%s]\n", full_path);
+		}else {
+			log_msg("search_metadata: An Error Has Occured! Error message: %s\n", sqlite3_errmsg(db));
+		}
+	}
+
+	sqlite3_finalize(stmt);
+
+	log_msg("search_metadata: Completed\n");
+	return data;
 }
 
 int update_isLocal(sqlite3* db, char* full_path){
-	char *err_msg = 0;
-	sqlite3_stmt *res;
+
+	log_msg("\nupdate_isLocal: Begin\n");
+	sqlite3_stmt *stmt;
 	int rc;
 	char* sql = "UPDATE Directory SET is_local = 1 WHERE full_path = ?\0";
-	rc = sqlite3_prepare_v2(db, sql, -1, &res, 0);
-	if(rc == SQLITE_OK){
-		sqlite3_bind_text(res, 1, full_path, -1, SQLITE_TRANSIENT);
-	}else {
+	rc = sqlite3_prepare_v2(db, sql, -1, &stmt, 0);
 
-        fprintf(stderr, "Failed to execute statement: %s\n", sqlite3_errmsg(db));
-        log_msg("\nError Occured Updating is_local: %s\n", sqlite3_errmsg(db));
+	if (rc == SQLITE_OK) {
+		log_msg("update_isLocal: Statement is prepared: %s\n", sql);
+		sqlite3_bind_text(stmt, 1, full_path, -1, SQLITE_TRANSIENT);
+		log_msg("update_isLocal: Statement is binded.\n");
+	} else {
+		log_msg("update_isLocal: Failed to prepare statement. Error message: %s\n", sqlite3_errmsg(db));
 	}
-	int step = sqlite3_step(res);
-	 if( step== SQLITE_DONE){
-	 log_msg("\nis_local UPDATED!\n");
-	 }else if(step ==SQLITE_BUSY){
-		 log_msg("\nSQLITE IS BUSY!");
-	 }else{
-		 log_msg("\nAn Error Has Occured: %s\n", sqlite3_errmsg(db));
-	 }
 
-	 sqlite3_free(err_msg);
+	if (rc == SQLITE_OK){
+		rc = sqlite3_step(stmt);
+		if (rc == SQLITE_DONE){
+			log_msg("update_isLocal: Successful\n");
+			rc = SQLITE_OK;
+		}else {
+			log_msg("update_isLocal: An Error Has Occured! Error message: %s\n", sqlite3_errmsg(db));
+		}
+	}
+
+	sqlite3_finalize(stmt);
+
+	log_msg("update_isLocal: Completed\n");
 	return 0;
 }
 
 
 int insert_directory(sqlite3* db, directory* data){
-	char *err_msg = 0;
-	sqlite3_stmt *res;
+
+	log_msg("\ninsert_directory: Begin\n");
+	sqlite3_stmt *stmt;
 	int rc;
 	char* sql = "INSERT INTO Directory (full_path, parent_folder_full_path, entry_name, old_full_path, type, size, mtime, atime, is_locked, is_modified, is_local, is_deleted, in_use_count, revision) VALUES( ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)\0";
-	rc = sqlite3_prepare_v2(db, sql, -1, &res, 0);
-	 if (rc == SQLITE_OK) {
 
-	        sqlite3_bind_text(res, 1, data->full_path, -1, SQLITE_TRANSIENT);
-	        sqlite3_bind_text(res, 2, data->parent_folder_full_path, -1, SQLITE_TRANSIENT);
-	        sqlite3_bind_text(res, 3, data->entry_name, -1, SQLITE_TRANSIENT);
-	        sqlite3_bind_text(res, 4, data->old_full_path, -1, SQLITE_TRANSIENT);
-	        sqlite3_bind_int(res, 5, data->type);
-	        sqlite3_bind_int(res, 6, data->size);
-	        sqlite3_bind_int(res, 7, data->atime);
-	        sqlite3_bind_int(res, 8, data->mtime);
-	        sqlite3_bind_int(res, 9, data->is_locked);
-	        sqlite3_bind_int(res, 10, data->is_modified);
-	        sqlite3_bind_int(res, 11, data->is_local);
-	        sqlite3_bind_int(res, 12, data->is_delete);
-	        sqlite3_bind_int(res, 13, data->in_use_count);
-	        sqlite3_bind_text(res, 14, data->revision, -1, SQLITE_TRANSIENT);
-	        log_msg("\nInsert Directory SQL created!: %s\n", sql);
+	rc = sqlite3_prepare_v2(db, sql, -1, &stmt, 0);
+	if (rc == SQLITE_OK) {
+		log_msg("insert_directory: Statement is prepared: %s\n", sql);
+        sqlite3_bind_text(stmt, 1, data->full_path, -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, 2, data->parent_folder_full_path, -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, 3, data->entry_name, -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, 4, data->old_full_path, -1, SQLITE_TRANSIENT);
+        sqlite3_bind_int(stmt, 5, data->type);
+        sqlite3_bind_int(stmt, 6, data->size);
+        sqlite3_bind_int(stmt, 7, data->atime);
+        sqlite3_bind_int(stmt, 8, data->mtime);
+        sqlite3_bind_int(stmt, 9, data->is_locked);
+        sqlite3_bind_int(stmt, 10, data->is_modified);
+        sqlite3_bind_int(stmt, 11, data->is_local);
+        sqlite3_bind_int(stmt, 12, data->is_delete);
+        sqlite3_bind_int(stmt, 13, data->in_use_count);
+        sqlite3_bind_text(stmt, 14, data->revision, -1, SQLITE_TRANSIENT);
+		log_msg("insert_directory: Statement is binded.\n");
+	} else {
+		log_msg("insert_directory: Failed to prepare statement. Error message: %s\n", sqlite3_errmsg(db));
+	}
 
-	    } else {
+	if (rc == SQLITE_OK){
+		rc = sqlite3_step(stmt);
+		if (rc == SQLITE_DONE){
+			log_msg("insert_directory: Successful\n");
+			rc = SQLITE_OK;
+		}else {
+			log_msg("insert_directory: An Error Has Occured! Error message: %s\n", sqlite3_errmsg(db));
+		}
+	}
 
-	        fprintf(stderr, "Failed to execute statement: %s\n", sqlite3_errmsg(db));
-	        log_msg("\nInsert Data Error Occured: %s\n", sqlite3_errmsg(db));
+	sqlite3_finalize(stmt);
 
-	    }
-	 int step = sqlite3_step(res);
-	 if( step== SQLITE_DONE){
-
-	 log_msg("\nInserted into Directory!\n");
-	 }else if(step ==SQLITE_BUSY){
-		 log_msg("\nSQLITE IS BUSY!");
-	 }else{
-		 log_msg("\nAn Error Has Occured!");
-	 }
-
-	 sqlite3_free(err_msg);
-
+	log_msg("insert_directory: Completed\n");
 	return 0;
 }
 
@@ -191,73 +275,73 @@ sqlite3* init_db(char* dbfile_path){
 
 int begin_transaction(sqlite3* db){
 
+	log_msg("\nbegin_transaction: Begin\n");
 	char* sql = "BEGIN TRANSACTION;";
 	char *zErrMsg = 0;
 	//Begin transaction to database
 	int rc = sqlite3_exec(db, sql, 0, 0, &zErrMsg);
 	//If SQLITE is busy, retry twice, if still busy then abort
 	for(int i=0;i<2;i++){
-		int k = 2;
-		log_msg("\ni: %d %d\n", i, k);
-		log_msg("\nrc2: %d %d\n", rc, SQLITE_BUSY);
 		if(rc == SQLITE_BUSY){
+			free(zErrMsg);
 			delay(500);
 			rc = sqlite3_exec(db, sql, 0, 0, &zErrMsg);
+
 		}else{
 			break;
 		}
 	}
 
 	if (rc != SQLITE_OK){
-		return -1;
+		log_msg("begin_transaction: Failed to run 'BEGIN TRANSACTION'. Error message: %s\n", zErrMsg);
+		free(zErrMsg);
+		return rc;
 	}
 	sql = "UPDATE LOCK SET dummy = 1;";
 	rc = sqlite3_exec(db, sql, 0, 0, &zErrMsg);
 	//If SQLITE is busy, retry twice, if still busy then abort
 	for(int i=0;i<2;i++){
-		int k = 2;
-		log_msg("\ni: %d %d\n", i, k);
-		log_msg("\nrc3: %d %d\n", rc, SQLITE_BUSY);
 		if(rc == SQLITE_BUSY){
+			free(zErrMsg);
 			delay(500);
 			rc = sqlite3_exec(db, sql, 0, 0, &zErrMsg);
 		}else{
-			return 0;
+			break;
 		}
 	}
-	log_msg("\nFailed to create a transaction\n");
-	return -1;
+	if (rc != SQLITE_OK){
+		log_msg("\nbegin_transaction: Failed to create a transaction. Error message: %s\n", zErrMsg);
+		free(zErrMsg);
+	}
+	log_msg("begin_transaction: Completed\n");
+
+	return rc;
 }
 
 int commit_transaction(sqlite3* db){
-
+	log_msg("\ncommit_transaction: Begin\n");
 	char *zErrMsg = 0;
 	int rc = sqlite3_exec(db, "Commit Transaction;", 0, 0, &zErrMsg);
+
+	if (rc != SQLITE_OK){
+		log_msg("\commit_transaction: Failed to commit a transaction. Error message: %s\n", sqlite3_errmsg(db));
+	}
+	free(zErrMsg);
+	log_msg("commit_transaction: Completed\n");
 
 	return rc;
 }
 
 int rollback_transaction(sqlite3* db){
+	log_msg("\nrollback_transaction: Begin\n");
 	char *zErrMsg = 0;
 	int rc = sqlite3_exec(db, "Rollback Transaction;", 0, 0, &zErrMsg);
-
-	return rc;
-}
-
-char* get_text(sqlite3_stmt* stmt, int col){
-	char* result = NULL;
-	char* tmp = sqlite3_column_text(stmt, col);
-	if (tmp != NULL){
-		int len = strlen(tmp);
-		result = malloc((len + 1)*sizeof(char));
-		strncpy(result, tmp, len);
-		result[len] = '\0';
-	} else {
-		result = malloc(sizeof(char));
-		result[0] = '\0';
+	if (rc != SQLITE_OK){
+		log_msg("rollback_transaction: Failed to rollback a trasaction. Error message: %s", zErrMsg);
 	}
-
-	return result;
+	free(zErrMsg);
+	log_msg("rollback_transaction: Completed\n");
+	return rc;
 }
 
 void free_lru(lru_entry* lru){
@@ -273,7 +357,6 @@ void free_lru(lru_entry* lru){
 
 lru_entry* select_lru(sqlite3* db, const char* path){
 	lru_entry* result = NULL;
-	char *err_msg = 0;
 	sqlite3_stmt *stmt = NULL;
 	int rc;
 	log_msg("\nselect_lru: Begin\n");
@@ -285,25 +368,24 @@ lru_entry* select_lru(sqlite3* db, const char* path){
 		sqlite3_bind_text(stmt, 1, path, -1, SQLITE_TRANSIENT);
 		log_msg("select_lru: Statement is binded.\n");
 	} else {
-		log_msg("select_lru: Failed to prepare statement. Error message %s\n", sqlite3_errmsg(db));
+		log_msg("select_lru: Failed to prepare statement. Error message: %s\n", sqlite3_errmsg(db));
 	}
 
 	if (rc == SQLITE_OK){
-		int step = sqlite3_step(stmt);
-		if (step == SQLITE_ROW){
-			result = malloc(sizeof(lru_entry));
+		rc = sqlite3_step(stmt);
+		if (rc == SQLITE_ROW){
+			result = (lru_entry*)malloc(sizeof(lru_entry));
 			result->curr = get_text(stmt, 0);
 			result->prev = get_text(stmt, 1);
 			result->next = get_text(stmt, 2);
 			log_msg("select_lru: Successful for path [%s]\n", path);
-		}else if (step == SQLITE_DONE){
+		}else if (rc == SQLITE_DONE){
 			log_msg("select_lru: No record is found for path [%s]\n", path);
 		}else {
-			log_msg("select_lru: An Error Has Occured! Error message %s\n", sqlite3_errmsg(db));
+			log_msg("select_lru: An Error Has Occured! Error message: %s\n", sqlite3_errmsg(db));
 		}
 	}
 
-	sqlite3_free(err_msg);
 	sqlite3_finalize(stmt);
 
 	log_msg("select_lru: Completed\n");
@@ -312,10 +394,9 @@ lru_entry* select_lru(sqlite3* db, const char* path){
 
 int insert_lru(sqlite3* db, lru_entry* lru){
 
-	char *err_msg = 0;
 	sqlite3_stmt *stmt = NULL;
 	int rc;
-	log_msg("\insert_lru: Begin\n");
+	log_msg("\ninsert_lru: Begin\n");
 
     char* sql = "INSERT INTO LRU_QUEUE (curr, prev, next) VALUES (?, ?, ?);";
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, 0);
@@ -327,19 +408,19 @@ int insert_lru(sqlite3* db, lru_entry* lru){
 		rc = sqlite3_bind_text(stmt, 3, lru->next, -1, SQLITE_TRANSIENT);
 		log_msg("insert_lru: Statement is binded.\n");
 	} else {
-		log_msg("insert_lru: Failed to prepare statement. Error message %s\n", sqlite3_errmsg(db));
+		log_msg("insert_lru: Failed to prepare statement. Error message: %s\n", sqlite3_errmsg(db));
 	}
 
 	if (rc == SQLITE_OK){
-		int step = sqlite3_step(stmt);
-		if (step == SQLITE_DONE){
+		rc = sqlite3_step(stmt);
+		if (rc == SQLITE_DONE){
 			log_msg("insert_lru: Successful\n");
+			rc = SQLITE_OK;
 		}else {
-			log_msg("insert_lru: An Error Has Occured! Error message %s\n", sqlite3_errmsg(db));
+			log_msg("insert_lru: An Error Has Occured! Error message: %s\n", sqlite3_errmsg(db));
 		}
 	}
 
-	sqlite3_free(err_msg);
 	sqlite3_finalize(stmt);
 	log_msg("insert_lru: Completed\n");
 
@@ -347,10 +428,10 @@ int insert_lru(sqlite3* db, lru_entry* lru){
 }
 
 int delete_lru(sqlite3* db, const char* path){
-	char *err_msg = 0;
+
 	sqlite3_stmt *stmt = NULL;
 	int rc;
-	log_msg("\delete_lru: Begin\n");
+	log_msg("\ndelete_lru: Begin\n");
 
 	char* sql = "DELETE FROM LRU_QUEUE WHERE curr = ?;";
 	rc = sqlite3_prepare_v2(db, sql, -1, &stmt, 0);
@@ -360,19 +441,19 @@ int delete_lru(sqlite3* db, const char* path){
 		rc = sqlite3_bind_text(stmt, 1, path, -1, SQLITE_TRANSIENT);
 		log_msg("delete_lru: Statement is binded.\n");
 	} else {
-		log_msg("delete_lru: Failed to prepare statement. Error message %s\n", sqlite3_errmsg(db));
+		log_msg("delete_lru: Failed to prepare statement. Error message: %s\n", sqlite3_errmsg(db));
 	}
 
 	if (rc == SQLITE_OK){
-		int step = sqlite3_step(stmt);
-		if (step == SQLITE_DONE){
+		rc = sqlite3_step(stmt);
+		if (rc == SQLITE_DONE){
 			log_msg("delete_lru: Successful\n");
+			rc = SQLITE_OK;
 		}else {
-			log_msg("delete_lru: An Error Has Occured! Error message %s\n", sqlite3_errmsg(db));
+			log_msg("delete_lru: An Error Has Occured! Error message: %s\n", sqlite3_errmsg(db));
 		}
 	}
 
-	sqlite3_free(err_msg);
 	sqlite3_finalize(stmt);
 	log_msg("delete_lru: Completed\n");
 
@@ -382,7 +463,7 @@ int delete_lru(sqlite3* db, const char* path){
 
 
 int update_lru(sqlite3* db, lru_entry* lru){
-	char *err_msg = 0;
+
 	sqlite3_stmt *stmt = NULL;
 	int rc;
 	log_msg("\nupdate_lru: Begin\n");
@@ -397,22 +478,42 @@ int update_lru(sqlite3* db, lru_entry* lru){
 		rc = sqlite3_bind_text(stmt, 3, lru->curr, -1, SQLITE_TRANSIENT);
 		log_msg("update_lru: Statement is binded.\n");
 	} else {
-		log_msg("update_lru: Failed to prepare statement. Error message %s\n", sqlite3_errmsg(db));
+		log_msg("update_lru: Failed to prepare statement. Error message: %s\n", sqlite3_errmsg(db));
 	}
 
 	if (rc == SQLITE_OK){
-		int step = sqlite3_step(stmt);
-		if (step == SQLITE_DONE){
+		rc = sqlite3_step(stmt);
+		if (rc == SQLITE_DONE){
 			log_msg("update_lru: Successful\n");
+			rc = SQLITE_OK;
 		}else {
-			log_msg("update_lru: An Error Has Occured! Error message %s\n", sqlite3_errmsg(db));
+			log_msg("update_lru: An Error Has Occured! Error message: %s\n", sqlite3_errmsg(db));
 		}
 	}
 
-	sqlite3_free(err_msg);
 	sqlite3_finalize(stmt);
 	log_msg("update_lru: Completed\n");
 
 	return rc;
+}
+
+lru_entry* pop_lru(sqlite3* db, int create_transaction){
+	int in_transaction = 0;
+	int rc = 0;
+	if (create_transaction){
+		rc = begin_transaction(db);
+		if (rc == SQLITE_OK){
+			in_transaction = 1;
+		}
+	}
+
+	if (in_transaction){
+		if (rc == SQLITE_OK){
+			rc = commit_transaction(db);
+		} else {
+			rc = rollback_transaction(db);
+		}
+
+	}
 }
 

@@ -947,8 +947,6 @@ void *bb_init(struct fuse_conn_info *conn)
     log_conn(conn);
     log_fuse_context(fuse_get_context());
 
-    test_sqlite_insert(BB_DATA->sqlite_conn);
-
     return BB_DATA;
 }
 
@@ -1602,7 +1600,7 @@ int main(int argc, char *argv[])
 
     sqlite3 *sqlite_conn = init_db("dir.db");
     bb_data->sqlite_conn = sqlite_conn;
-
+    test_sqlite_insert(sqlite_conn);
 
     // turn over control to fuse
     fprintf(stderr, "about to call fuse_main\n");
@@ -1614,28 +1612,37 @@ int main(int argc, char *argv[])
 
 void test_sqlite_insert(sqlite3* db){
 
-	directory* data = malloc(sizeof(directory));
+	directory* data = new_directory(
+			"a",
+			"b",
+			"c",
+			"d",
+			1,
+			2,
+			3,
+			4,
+			0,
+			0,
+			0,
+			0,
+			5,
+			"e"
+			);
 
-	data->full_path = "a";
-	data->parent_folder_full_path = "b";
-	data->entry_name = "c";
-	data->old_full_path = "d";
-	data->type = 1;
-	data->size = 2;
-	data->mtime = 3;
-	data->atime = 4;
-	data->is_locked = 0;
-	data->is_modified = 0;
-	data->is_local =0;
-	data->is_delete = 0;
-	data->in_use_count = 5;
-	data->revision = "e";
 	char* fpathtest = "a";
 
 	insert_directory(db, data);
-	update_isLocal(db, fpathtest);
-	search_metadata(db, "b");
+	free_directory(data);
 
-	free(data);
+	update_isLocal(db, fpathtest);
+	directory* dir = search_directory(db, "a");
+
+	if (dir != NULL){
+		log_msg("\nSuccessfully get all the metadata of file %s\n", dir->full_path);
+		log_msg("Successfully get all the metadata of file %s\n", dir->entry_name);
+		log_msg("Successfully get all the metadata of file %lld\n", dir->mtime);
+		log_msg("Successfully get all the metadata of file %d\n", dir->is_local);
+	}
+	free_directory(dir);
 
 }
