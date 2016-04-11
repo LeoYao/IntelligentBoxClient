@@ -8,7 +8,7 @@
 #include <stdlib.h>
 #include <memStream.h>
 
-#define RETRY_MAX = 3;
+#define RETRY_MAX 3
 
 int parse_mon(char* mon_str){
 	int mon = 0;
@@ -147,7 +147,7 @@ int download_file(drbClient* cli, drbMetadata** metadata_ref, const char* remote
 	return err;
 }
 
-int release_metadata(drbMetadata* metadata){
-	return drbDestroyMetadata(metadata, true);
+void release_metadata(drbMetadata* metadata){
+	drbDestroyMetadata(metadata, true);
 }
 
