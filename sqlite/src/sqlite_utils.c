@@ -289,13 +289,37 @@ sqlite3* init_db(char* dbfile_path){
 
 	// Create a table Directory for storage several metadata on the files
 	// Or on Dropbox. If table already exists, ignore the SQL.
-	char *sql = "CREATE TABLE IF NOT EXISTS Directory (full_path varchar(4000) PRIMARY KEY, parent_folder_full_path varchar(4000), entry_name varchar(255), old_full_path varchar(4000), type integer, size integer, mtime datetime, atime datetime, is_locked integer, is_modified integer, is_local integer, is_deleted integer, in_use_count integer, revision string);";
+	char *sql = "CREATE TABLE IF NOT EXISTS Directory (full_path varchar(4000) PRIMARY KEY, parent_folder_full_path varchar(4000), entry_name varchar(255), old_full_path varchar(4000), type integer, size integer, mtime datetime, atime datetime, is_locked integer, is_modified integer, is_local integer, is_deleted integer, in_use_count integer, revision string);\0";
 	log_msg("\ncreate_db: %s\n", sql);
 	rc = sqlite3_exec(sqlite_conn, sql, 0, 0, &zErrMsg);
 	if( rc!=SQLITE_OK ){
 		log_msg("SQL error: %s\n", zErrMsg);
 		sqlite3_free(zErrMsg);
 	}
+
+	//Insert initial record for root folder
+	unsigned int epoch_now = time(NULL);
+	char epoch_now_str[15];
+	for (int i = 0; i < 15; i++){
+		epoch_now_str[i] = '\0';
+	}
+	sprintf(epoch_now_str, "%u", epoch_now);
+	sql = concat_string(6,
+			"insert or ignore into directory (full_path, parent_folder_full_path, entry_name, old_full_path, type, size, mtime, atime, is_locked, is_modified, is_local, is_deleted, in_use_count, revision)\0",
+			"values('','.','','',1,0,\0",
+			epoch_now_str,
+			",\0",
+			epoch_now_str,
+			",0,0,0,0,0,'')\0");
+
+	rc = sqlite3_exec(sqlite_conn, sql, 0, 0, &zErrMsg);
+	if( rc!=SQLITE_OK ){
+		log_msg("SQL error: %s\n", zErrMsg);
+		sqlite3_free(zErrMsg);
+	}
+	free(sql);
+
+
 	sql = "create table if not exists LOCK (dummy char(1));";
 	rc = sqlite3_exec(sqlite_conn, sql, 0, 0, &zErrMsg);
 	if( rc!=SQLITE_OK ){

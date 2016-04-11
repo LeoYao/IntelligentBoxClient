@@ -63,7 +63,6 @@ char* concat_string(const int n, ...){
 
 	for (int i=3; i<=n; ++i){
 		const char* input = va_arg(ap,char*);
-		printf("%s\n", input);
 		len = end + strlen(input) + 1;
 		char* new_s = (char*) realloc(s, len);
 		if (new_s != NULL){
