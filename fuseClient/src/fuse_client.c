@@ -1628,12 +1628,10 @@ void test_sqlite_insert(sqlite3* db){
 			5,
 			"e"
 			);
-
-	char* fpathtest = "a";
-
 	insert_directory(db, data);
 	free_directory(data);
 
+	char* fpathtest = "a";
 	update_isLocal(db, fpathtest);
 	directory* dir = search_directory(db, "a");
 
@@ -1643,6 +1641,37 @@ void test_sqlite_insert(sqlite3* db){
 		log_msg("Successfully get all the metadata of file %lld\n", dir->mtime);
 		log_msg("Successfully get all the metadata of file %d\n", dir->is_local);
 	}
-	free_directory(dir);
+	free_directory(dir); //Dont' forget to release memory to avoid memory leak
+
+
+	//Insert another record with the same parent folder
+	data = new_directory(
+					"a2",
+					"b",
+					"c",
+					"d",
+					1,
+					2,
+					3,
+					4,
+					0,
+					0,
+					0,
+					0,
+					5,
+					"e"
+					);
+	insert_directory(db, data);
+	free_directory(data); //Dont' forget to release memory to avoid memory leak
+
+	//Query all sub files/folder under a same parent folder
+	int rs_cnt = 0;
+	directory** dirs = search_subdirectories(db, "b", &rs_cnt);
+	if (dirs != NULL){
+		log_msg("\n");
+		for (int i = 0; i < rs_cnt; ++i)
+		log_msg("Successfully get all the metadata of file %s\n", dirs[i]->full_path);
+	}
+	free_directories(dirs, rs_cnt); //Dont' forget to release memory to avoid memory leak
 
 }

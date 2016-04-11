@@ -8,6 +8,7 @@
 #include <common_utils.h>
 #include <sys/time.h>
 
+
 //Delay method
 void delay(unsigned int mseconds)
 {
@@ -78,4 +79,33 @@ char* concat_string(const int n, ...){
 	va_end(ap);
 	s[end] = '\0';
 	return s;
+}
+
+
+int expand_mem(void** ptr, int size){
+	if (ptr == NULL || size == 0){
+		return NULL;
+	}
+
+	void* result = realloc(*ptr, size * 2);
+	if (result != NULL){
+		*ptr = result;
+		return 0;
+	}
+	return -1;
+}
+
+char* copy_text(const char* tmp){
+	char* result = NULL;
+	if (tmp != NULL){
+		int len = strlen(tmp);
+		result = (char*)malloc((len + 1)*sizeof(char));
+		strncpy(result, tmp, len);
+		result[len] = '\0';
+	} else {
+		result = (char*)malloc(sizeof(char));
+		result[0] = '\0';
+	}
+
+	return result;
 }

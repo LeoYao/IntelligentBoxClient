@@ -15,21 +15,6 @@ static char* HEAD = ".head";
 static char* TAIL = ".tail";
 
 
-char* copy_text(const char* tmp){
-	char* result = NULL;
-	if (tmp != NULL){
-		int len = strlen(tmp);
-		result = (char*)malloc((len + 1)*sizeof(char));
-		strncpy(result, tmp, len);
-		result[len] = '\0';
-	} else {
-		result = (char*)malloc(sizeof(char));
-		result[0] = '\0';
-	}
-
-	return result;
-}
-
 char* get_text(sqlite3_stmt* stmt, int col){
 	char* result = NULL;
 	char* tmp = sqlite3_column_text(stmt, col);
@@ -72,9 +57,10 @@ directory* new_directory(
 
 	return data;
 }
-void free_directory(directory* dir){
+
+void free_directory_content(directory* dir){
 	if (dir == NULL){
-		return;
+			return;
 	}
 
 	free(dir->full_path);
@@ -82,10 +68,44 @@ void free_directory(directory* dir){
 	free(dir->old_full_path);
 	free(dir->parent_folder_full_path);
 	free(dir->revision);
+}
+
+void free_directory(directory* dir){
+	if (dir == NULL){
+		return;
+	}
+
+	free_directory_content(dir);
 
 	free(dir);
 }
 
+void free_directories(directory** dirs, int size){
+	for (int i = 0; i < size; ++i){
+		free_directory_content(dirs[i]);
+	}
+
+	free(dirs);
+}
+
+directory* populate_directory(sqlite3_stmt *stmt){
+	directory* data = malloc(sizeof(directory));
+	data->full_path = get_text(stmt, 0);
+	data->parent_folder_full_path = get_text(stmt,1);
+	data->entry_name  = get_text(stmt, 2);
+	data->old_full_path = get_text(stmt, 3);
+	data->type = sqlite3_column_int(stmt, 4);
+	data->size = sqlite3_column_int(stmt, 5);
+	data->atime = sqlite3_column_int64(stmt, 6);
+	data->mtime = sqlite3_column_int64(stmt, 7);
+	data->is_locked = sqlite3_column_int(stmt, 8);
+	data->is_modified = sqlite3_column_int(stmt, 9);
+	data->is_local = sqlite3_column_int(stmt, 10);
+	data->is_delete = sqlite3_column_int(stmt, 11);
+	data->in_use_count = sqlite3_column_int(stmt, 12);
+	data->revision = get_text(stmt, 13);
+	return data;
+}
 
 directory* search_directory(sqlite3* db, char* full_path){
 
@@ -93,7 +113,7 @@ directory* search_directory(sqlite3* db, char* full_path){
 	directory* data = NULL;
 	sqlite3_stmt *stmt;
 	int rc;
-	char* sql = "SELECT * FROM Directory WHERE full_path = ?";
+	char* sql = "SELECT full_path, parent_folder_full_path, entry_name, old_full_path, type, size, mtime, atime, is_locked, is_modified, is_local, is_deleted, in_use_count, revision FROM Directory WHERE full_path = ?";
 
 	rc = sqlite3_prepare_v2(db, sql, -1, &stmt, 0);
 
@@ -109,22 +129,7 @@ directory* search_directory(sqlite3* db, char* full_path){
 		rc = sqlite3_step(stmt);
 
 		if( rc == SQLITE_ROW){
-			data = malloc(sizeof(directory));
-			data->full_path = get_text(stmt, 0);
-			data->parent_folder_full_path = get_text(stmt,1);
-			data->entry_name  = get_text(stmt, 2);
-			data->old_full_path = get_text(stmt, 3);
-			data->type = sqlite3_column_int(stmt, 4);
-			data->size = sqlite3_column_int(stmt, 5);
-			data->atime = sqlite3_column_int64(stmt, 6);
-			data->mtime = sqlite3_column_int64(stmt, 7);
-			data->is_locked = sqlite3_column_int(stmt, 8);
-			data->is_modified = sqlite3_column_int(stmt, 9);
-			data->is_local = sqlite3_column_int(stmt, 10);
-			data->is_delete = sqlite3_column_int(stmt, 11);
-			data->in_use_count = sqlite3_column_int(stmt, 12);
-			data->revision = get_text(stmt, 13);
-
+			data = populate_directory(stmt);
 		} else if (rc == SQLITE_DONE){
 			log_msg("search_metadata: No record is found for path [%s]\n", full_path);
 		}else {
@@ -136,6 +141,58 @@ directory* search_directory(sqlite3* db, char* full_path){
 
 	log_msg("search_metadata: Completed\n");
 	return data;
+}
+
+directory** search_subdirectories(sqlite3* db, char* parent_path, int* count){
+
+	log_msg("\nsearch_subdirectories: Begin\n");
+
+	*count = 0;
+	directory** datas = NULL;
+	int capacity = 1;
+	sqlite3_stmt *stmt;
+	int rc;
+	char* sql = "SELECT full_path, parent_folder_full_path, entry_name, old_full_path, type, size, mtime, atime, is_locked, is_modified, is_local, is_deleted, in_use_count, revision FROM Directory WHERE parent_folder_full_path = ?";
+
+	rc = sqlite3_prepare_v2(db, sql, -1, &stmt, 0);
+
+	if( rc == SQLITE_OK){
+		log_msg("search_subdirectories: Statement is prepared: %s\n", sql);
+		sqlite3_bind_text(stmt, 1, parent_path, -1, SQLITE_TRANSIENT);
+		log_msg("search_subdirectories: Statement is binded.\n");
+	} else {
+		log_msg("search_subdirectories: Failed to prepare statement. Error message: %s\n", sqlite3_errmsg(db));
+	}
+
+	if (rc == SQLITE_OK) {
+		rc = sqlite3_step(stmt);
+		if (rc == SQLITE_ROW){
+			datas = malloc(capacity * sizeof(directory*));
+		}
+		while(rc == SQLITE_ROW){
+			datas[*count] = populate_directory(stmt);
+			*count = *count + 1;
+
+			if (*count == capacity){
+				if (expand_mem(&datas, capacity) == EXPAND_OK){
+					capacity *= 2;
+				} else {
+					log_msg("search_metadata: Failed to expand data.");
+					break;
+				}
+			}
+			rc = sqlite3_step(stmt);
+		}
+
+		if (rc != SQLITE_DONE){
+			log_msg("search_metadata: An Error Has Occured! Error message: %s\n", sqlite3_errmsg(db));
+		}
+	}
+
+	sqlite3_finalize(stmt);
+
+	log_msg("search_subdirectories: Completed\n");
+	return datas;
 }
 
 int update_isLocal(sqlite3* db, char* full_path){
