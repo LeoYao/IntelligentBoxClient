@@ -509,10 +509,9 @@ int bb_open(const char *path, struct fuse_file_info *fi)
             free(output);
         } else {
         	//Get result as well as update isLocal value in the database table
+            update_isLocal(db1, fpath);
             displayMetadata(output, "Get File Result");
             drbDestroyMetadata(output, true);
-            update_isLocal(db1, fpath);
-
         }
     }
     // If the file is local, just open it.
@@ -525,15 +524,10 @@ int bb_open(const char *path, struct fuse_file_info *fi)
     fi->fh = fd;
     log_fi(fi);
 
-
-
     // Get timestamp when the file was open
     update_atime(fpath);
 
-
-
     return retstat;
-
 
 }
 
@@ -572,9 +566,6 @@ int bb_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_
     update_atime(fpath);
 
     return retstat;
-
-
-
 }
 
 /** Write data to an open file
@@ -611,45 +602,13 @@ int bb_write(const char *path, const char *buf, size_t size, off_t offset,
     if (retstat < 0)
 	retstat = bb_error("bb_write pwrite");
 
-    char* sql1= "UPDATE Directory SET is_modified = 1 WHERE full_path = ";
-    char* sql2 = fpath;
-    char* sql_update_is_modified = "";
-//    		(char*)malloc(5+strlen(sql1)+strlen(sql2));
-    char* sql_begin = "BEGIN TRANSACTION";
-    char* sql_commit = "COMMIT";
-    strncpy(sql_update_is_modified, sql1, strlen(sql1)+1);
-    strncpy(sql_update_is_modified, sql2, strlen(sql2)+1);
-
-    //Begin transaction to database
-    rc = sqlite3_exec(db1, sql_begin, 0, 0, &zErrMsg);
-    //If SQLITE is busy, retry twice, if still busy then abort
-    for(int i=0;i<2;i++){
-    	if(rc == SQLITE_BUSY){
-    		delay(50);
-    		rc = sqlite3_exec(db1, sql_begin, 0, 0, &zErrMsg);
-    	}else{
-    		break;
-    	}
-    }
-
-    rc = sqlite3_exec(db1, sql_update_is_modified, 0, 0, &zErrMsg);
-
-    // If there's an error updating the database table, print it out.
-        if( rc!=SQLITE_OK ){
-           fprintf(stderr, "SQL error: %s\n", zErrMsg);
-           sqlite3_free(zErrMsg);
-                }
-
     // Get timestamp when the file was open
+    begin_transaction(db1);
+    update_isModified(db1, fpath);
     update_atime(fpath);
     update_mtime(fpath);
+    commit_transaciton(db1);
 
-    //Commit the changes to database
-    rc = sqlite3_exec(db1, sql_commit, 0, 0, &zErrMsg);
-    if( rc!=SQLITE_OK ){
-    	            		fprintf(stderr, "SQL error: %s\n", zErrMsg);
-    	            		sqlite3_free(zErrMsg);
-    	            	}
 
 
 

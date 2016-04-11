@@ -264,6 +264,38 @@ int update_isLocal(sqlite3* db, char* full_path){
 	return 0;
 }
 
+int update_isModified(sqlite3* db, char* full_path){
+
+	log_msg("\nupdate_isModified: Begin\n");
+	sqlite3_stmt *stmt;
+	int rc;
+	char* sql = "UPDATE Directory SET is_modified = 1 WHERE full_path = ?\0";
+	rc = sqlite3_prepare_v2(db, sql, -1, &stmt, 0);
+
+	if (rc == SQLITE_OK) {
+		log_msg("update_isModified: Statement is prepared: %s\n", sql);
+		sqlite3_bind_text(stmt, 1, full_path, -1, SQLITE_TRANSIENT);
+		log_msg("update_isModified: Statement is binded.\n");
+	} else {
+		log_msg("update_isModified: Failed to prepare statement. Error message: %s\n", sqlite3_errmsg(db));
+	}
+
+	if (rc == SQLITE_OK){
+		rc = sqlite3_step(stmt);
+		if (rc == SQLITE_DONE){
+			log_msg("update_isModified: Successful\n");
+			rc = SQLITE_OK;
+		}else {
+			log_msg("update_isModified: An Error Has Occured! Error message: %s\n", sqlite3_errmsg(db));
+		}
+	}
+
+	sqlite3_finalize(stmt);
+
+	log_msg("update_isModified: Completed\n");
+	return 0;
+}
+
 int insert_directory(sqlite3* db, directory* data){
 
 	log_msg("\ninsert_directory: Begin\n");
