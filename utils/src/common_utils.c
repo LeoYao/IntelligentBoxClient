@@ -108,3 +108,18 @@ char* copy_text(const char* tmp){
 
 	return result;
 }
+
+char* substring(const char* str, int start, int end){
+	char* result = NULL;
+	if (str != NULL && start < end){
+		int len = end - start;
+		result = (char*)malloc((len + 1)*sizeof(char));
+		strncpy(result, str+start, len);
+		result[len] = '\0';
+	} else {
+		result = (char*)malloc(sizeof(char));
+		result[0] = '\0';
+	}
+
+	return result;
+}
