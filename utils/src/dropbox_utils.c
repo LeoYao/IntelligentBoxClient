@@ -1,8 +1,14 @@
 #include <dropbox_utils.h>
+
 #include <time.h>
 #include <inttypes.h>
 #include <common_utils.h>
 #include <log.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <memStream.h>
+
+#define RETRY_MAX = 3;
 
 int parse_mon(char* mon_str){
 	int mon = 0;
@@ -66,4 +72,82 @@ long parse_time(char* time_string){
 	return (long)t_of_day;
 }
 
+int get_metadata(drbClient* cli, drbMetadata** metadata_ref, const char* remote_path){
+
+	log_msg("\nget_metadata: Begin\n");
+	*metadata_ref = NULL;
+	int err = -1;
+	char * path = NULL;
+	if (remote_path[0] == '\0'){
+		path = "/\0";
+	} else {
+		path = remote_path;
+	}
+
+	for (int i = 0; i < RETRY_MAX; ++i){
+		err = drbGetMetadata(cli, metadata_ref,
+							 DRBOPT_PATH, path,
+							 DRBOPT_LIST, true,
+							 //                     DRBOPT_FILE_LIMIT, 100,
+							 DRBOPT_END);
+		if (err == DRBERR_OK) {
+			log_msg("get_metadata: Successful for [%s]\n", path);
+			break;
+		} else if (err == DRBERR_TIMEOUT){
+			log_msg("get_metadata: Timeout for [%s], Retried Times [%d]\n", path, i);
+			free(*metadata_ref);
+			delay(1000);
+		} else {
+			log_msg("get_metadata: Failed for [%s]. Error code: [%d]\n", path, err);
+			free(*metadata_ref);
+			break;
+		}
+	}
+
+	if (err != DRBERR_OK){
+		log_msg("get_metadata: Failed. Error code: [%d]\n", err);
+	}
+
+	return err;
+}
+
+int download_file(drbClient* cli, drbMetadata** metadata_ref, const char* remote_path, const char* local_path){
+
+	log_msg("\download_file: Begin\n");
+	*metadata_ref = NULL;
+	int err = -1;
+
+	for (int i = 0; i < RETRY_MAX; ++i){
+		FILE *file = fopen(local_path, "w"); // Write it in this file
+		err = drbGetFile(cli, metadata_ref,
+						 DRBOPT_PATH, remote_path,
+						 DRBOPT_IO_DATA, file,
+						 DRBOPT_IO_FUNC, fwrite,
+						 DRBOPT_END);
+		fclose(file);
+
+		if (err == DRBERR_OK) {
+			log_msg("download_file: Successful for [%s] to [%s]\n", remote_path, local_path);
+			break;
+		} else if (err == DRBERR_TIMEOUT){
+			log_msg("download_file: Timeout for [%s] to [%s], Retried Times [%d]\n", remote_path, local_path, i);
+			free(*metadata_ref);
+			delay(1000);
+		} else {
+			log_msg("download_file: Failed for [%s] to [%s]. Error code: [%d]\n", remote_path, local_path, err);
+			free(*metadata_ref);
+			break;
+		}
+	}
+
+	if (err != DRBERR_OK){
+		log_msg("download_file: Failed. Error code: [%d]\n", err);
+	}
+
+	return err;
+}
+
+int release_metadata(drbMetadata* metadata){
+	return drbDestroyMetadata(metadata, true);
+}
 
