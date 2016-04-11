@@ -142,3 +142,22 @@ char* get_parent_path(const char* path){
 
 	return parent_path;
 }
+
+char* get_file_name(const char* path){
+	char* file_name = NULL;
+
+	int len = strlen(path);
+	for (int i = len - 1; i >= 0; i--){
+		if (path[i] == '/'){
+			file_name = substring(path, i+1, len);
+			break;
+		}
+	}
+
+	if (file_name == NULL){
+		file_name = (char*)malloc(sizeof(char));
+		file_name[0] = '\0';
+	}
+
+	return file_name;
+}
