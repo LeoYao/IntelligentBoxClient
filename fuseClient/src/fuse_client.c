@@ -219,6 +219,8 @@ int bb_mkdir(const char *path, mode_t mode)
     int retstat = 0;
     char fpath[PATH_MAX];
     bb_fullpath(fpath, path);
+    char* parent_path = get_parent_path(fpath);
+    char* file_name = get_file_name(fpath);
 
 //    drbClient* cli = BB_DATA->client;
     sqlite3* db1 = BB_DATA->sqlite_conn;
@@ -226,58 +228,30 @@ int bb_mkdir(const char *path, mode_t mode)
     log_msg("\nbb_mkdir(path=\"%s\", mode=0%3o)\n",
 	    path, mode);
     bb_fullpath(fpath, path);
-
     retstat = mkdir(fpath, mode);
-    if (retstat < 0)
-	retstat = bb_error("bb_mkdir mkdir");
-
-    char* parent_path;
-    char* path2 = strdup(fpath);
-    parent_path = basename(path2);
-    //Create SQL for insert new file directory information into table Directory
-    char* sql1 = "INSERT INTO Directory WITH VALUES(";
-    char* sql2 = fpath;
-    char* sql3 = ",";
-    char* sql4 = parent_path;
-    char* sql5 = "null, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0);";
-    char* sql_create_file_dir = "";
-//    		(char*)malloc(strlen(sql1)+strlen(sql2)+strlen(sql3)+strlen(sql4)+strlen(sql5));
-    sql_create_file_dir = strncpy(sql_create_file_dir, sql1, strlen(sql1)+1);
-    sql_create_file_dir = strncpy(sql_create_file_dir, sql2, strlen(sql2)+1);
-    sql_create_file_dir = strncpy(sql_create_file_dir, sql3, strlen(sql3)+1);
-    sql_create_file_dir = strncpy(sql_create_file_dir, sql4, strlen(sql4)+1);
-    sql_create_file_dir = strncpy(sql_create_file_dir, sql5, strlen(sql5)+1);
-
-    char* sql_begin = "BEGIN TRANSACTION";
-
-    //Begin transaction to database
-    rc = sqlite3_exec(db1, sql_begin, 0, 0, &zErrMsg);
-    //If SQLITE is busy, retry twice, if still busy then abort
-    for(int i=0;i<2;i++){
-        if(rc == SQLITE_BUSY){
-       		delay(50);
-       		rc = sqlite3_exec(db1, sql_begin, 0, 0, &zErrMsg);
-       	}else{
-       		break;
-       	}
+    if (retstat < 0){
+    	retstat = bb_error("bb_mkdir mkdir");
+    }else{
+    	directory* dir = new_directory(
+    				fpath,
+    				parent_path,
+    				file_name,
+    				"",
+    				1,
+    				0,
+    				0,
+    				0,
+    				0,
+    				1,
+    				1,
+    				0,
+    				0,
+    				""
+    				);
+    	insert_directory(db1, dir);
+    	log_msg("\nInsert Directory Info Into Database Table After mkdir!\n");
+    	free_directory(dir);
     }
-
-    // Insert into database table
-    rc = sqlite3_exec(db1, sql_create_file_dir, 0, 0, &zErrMsg);
-    if(rc != SQLITE_OK){
-     	   fprintf(stderr, "SQL error: %s\n", zErrMsg);
-     	   sqlite3_free(zErrMsg);
-        }
-
-    update_atime(fpath);
-    update_mtime(fpath);
-
-    rc = sqlite3_exec(db1, "COMMIT", 0, 0, &zErrMsg);
-    if(rc != SQLITE_OK){
-      	   fprintf(stderr, "SQL error: %s\n", zErrMsg);
-      	   sqlite3_free(zErrMsg);
-         }
-
     return retstat;
 }
 
@@ -312,6 +286,9 @@ int bb_rmdir(const char *path)
     if (retstat < 0)
 	retstat = bb_error("bb_rmdir rmdir");
 
+   //Update the database table to set is_deleted to 1
+    update_isDeleted(fpath);
+    log_msg("\nUpdate Database Table After rmdir!\n");
     return retstat;
 }
 
@@ -538,6 +515,7 @@ int bb_open(const char *path, struct fuse_file_info *fi)
     log_msg("\natime Has Been Updated!\n");
     commit_transaction(db1);
     log_msg("\Database Transaction Has Successfully Complete!\n");
+    free_directory(dir);
     return retstat;
 
 }
@@ -619,9 +597,6 @@ int bb_write(const char *path, const char *buf, size_t size, off_t offset,
     update_atime(fpath);
     update_mtime(fpath);
     commit_transaction(db1);
-
-
-
 
 //    free(sql_update_is_modified);
 

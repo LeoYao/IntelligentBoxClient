@@ -62,6 +62,8 @@ void free_directory(directory* dir);
 void free_directories(directory** dirs, int size);
 directory* search_directory(sqlite3* db, char* full_path);
 int update_isLocal(sqlite3* db, char* full_path);
+int update_isDeleted(sqlite3* db, char* full_path);
+int update_isModified(sqlite3* db, char* full_path);
 int insert_directory(sqlite3* db, directory* data);
 int clean_subdirectories(sqlite3* db, char* parent_path);
 directory** search_subdirectories(sqlite3* db, char* parent_path, int* count);
