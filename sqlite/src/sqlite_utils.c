@@ -303,7 +303,6 @@ sqlite3* init_db(char* dbfile_path){
 		sqlite3_free(zErrMsg);
 	}
 
-
 	sql = concat_string(2,
 			"create table if not exists LRU_QUEUE\n",
 	    	"(curr varchar(4000)  PRIMARY KEY,prev varchar(4000),next varchar(4000));");

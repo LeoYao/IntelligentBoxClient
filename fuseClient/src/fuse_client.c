@@ -1353,52 +1353,31 @@ int ibc_getattr(const char *path, struct stat *statbuf)
 		bb_fullpath(fpath, path);
 		int rc;
 		char *zErrMsg = 0;
-		char mtime;
-		 //Begin transaction to database
-		rc = sqlite3_exec(db1, "BEGIN TRANSACTION", 0, 0, &zErrMsg);
-		//If SQLITE is busy, retry twice, if still busy then abort
-			for(int i=0;i<2;i++){
-				if(rc == SQLITE_BUSY){
-					delay(50);
-					rc = sqlite3_exec(db1, "BEGIN TRANSACTION", 0, 0, &zErrMsg);
-				 	 }else{
-				 		 break;
-				     }
-			 }
-		char* sql1 = "SELECT mtime FROM Directory WHERE full_path=";
-		char* sql2 =";";
-		char* sql_get_mtime = "";
-//				malloc(sizeof(sql_get_mtime));
-		strncpy(sql_get_mtime, sql1, strlen(sql1)+1);
-		strncpy(sql_get_mtime, fpath, strlen(fpath)+1);
-		strncpy(sql_get_mtime, sql2, strlen(sql2)+1);
+		directory *result = search_directory(db1, fpath);
 
-		rc = sqlite3_exec(db1, sql_get_mtime, callback, &mtime, &zErrMsg);
-
-
-		drbMetadata* meta = (drbMetadata*)output;
+//		drbMetadata* meta = (drbMetadata*)output;
 		//displayMetadata(meta, "Metadata");
-		statbuf->st_size = *(meta->bytes);
+		statbuf->st_size = result->size;
 		statbuf->st_uid = getuid();
 		statbuf->st_gid = getgid();
-		statbuf->st_atime = mtime;// = "access time";
-		statbuf->st_ctime = mtime; //= "change time";
-		statbuf->st_mtime = mtime;// = "modify time";
-		log_msg("\nget mtime: %s\n", mtime);
-		if (*(meta->isDir))
+//		statbuf->st_atime = mtime;// = "access time";
+//		statbuf->st_ctime = mtime; //= "change time";
+//		statbuf->st_mtime = mtime;// = "modify time";
+//		log_msg("\nget mtime: %s\n", mtime);
+		if (result->type == "2")
 		{
 			statbuf->st_mode = S_IFDIR | 0755;
 
 			//increase nlink if there are subfolders
 			int subdirCount = 0;
-			for (int i = 0; i < meta->contents->size; i++) {
-				drbMetadata* entry = meta->contents->array[i];
-				if (*(entry->isDir))
-				{
-					++subdirCount;
-				}
-			}
-			statbuf->st_nlink = 2 + subdirCount;
+//			for (int i = 0; i < meta->contents->size; i++) {
+//				drbMetadata* entry = meta->contents->array[i];
+//				if (*(entry->isDir))
+//				{
+//					++subdirCount;
+//				}
+//			}
+//			statbuf->st_nlink = 2 + subdirCount;
 		}
 		else
 		{
@@ -1406,7 +1385,8 @@ int ibc_getattr(const char *path, struct stat *statbuf)
 			statbuf->st_nlink = 1;
 		}
 
-		drbDestroyMetadata(meta, true);
+		free_directory(result);
+
 		log_stat(statbuf);
 	}
 
@@ -1462,6 +1442,7 @@ int bb_fgetattr(const char *path, struct stat *statbuf, struct fuse_file_info *f
 		printf("Metadata error (%d): %s\n", err, (char*)output);
 		free(output);
 	} else {
+
 		drbMetadata* meta = (drbMetadata*)output;
 		//displayMetadata(meta, "Metadata");
 		statbuf->st_size = *(meta->size);
@@ -1602,6 +1583,7 @@ int main(int argc, char *argv[])
     bb_data->sqlite_conn = sqlite_conn;
     test_sqlite_insert(sqlite_conn);
 
+
     // turn over control to fuse
     fprintf(stderr, "about to call fuse_main\n");
     fuse_stat = fuse_main(argc, argv, &bb_oper, bb_data);
@@ -1663,6 +1645,26 @@ void test_sqlite_insert(sqlite3* db){
 					);
 	insert_directory(db, data);
 	free_directory(data); //Dont' forget to release memory to avoid memory leak
+
+	 data = new_directory(
+	    			"",
+	    			".",
+	    			"",
+	    			"",
+	    			2,
+	    			0,
+	    			0,
+	    			0,
+	    			0,
+	    			0,
+	    			0,
+	    			0,
+	    			0,
+	    			""
+	    			);
+	    	insert_directory(db, data);
+	    	free_directory(data);
+
 
 	//Query all sub files/folder under a same parent folder
 	int rs_cnt = 0;
