@@ -479,10 +479,12 @@ int bb_open(const char *path, struct fuse_file_info *fi)
 
     //Search to see if the directory is already in the database
     begin_transaction(db1);
+    log_msg("\nBegin transaction function has been called!\n");
     dir = search_directory(db1, fpath);
-    if( dir == SQLITE_ROW ){
 
+    if( dir == SQLITE_ROW ){
     	i++;
+    	log_msg("\nA Record Has Been Found In The Database!\n");
     }else if( dir ==SQLITE_DONE ){
     	log_msg("\nThere's No Such Directory on local or on Dropbox.\n");
     	printf("\nError: No such directory. Please retry.\n");
@@ -492,7 +494,8 @@ int bb_open(const char *path, struct fuse_file_info *fi)
 
     // If the file is not on local, Download it from Dropbox
     if( dir->is_local == 0){
-    log_msg("\nbb_open(path\"%s\", fi=0x%08x)\n",
+    	log_msg("\nThe File Is Currently Not On Local Disks!\n");
+    	log_msg("\nbb_open(path\"%s\", fi=0x%08x)\n",
 	    path, fi);
     bb_fullpath(fpath, path);
     FILE *file = fopen(fpath, "w"); // Write it in this file
@@ -503,6 +506,7 @@ int bb_open(const char *path, struct fuse_file_info *fi)
                          DRBOPT_IO_FUNC, fwrite,
                          DRBOPT_END);
         fclose(file);
+        log_msg("\nThe File Has Been Downloaded! Checking For Error...\n");
 
         if (err != DRBERR_OK) {
             printf("Get File error (%d): %s\n", err, (char*)output);
@@ -510,8 +514,10 @@ int bb_open(const char *path, struct fuse_file_info *fi)
         } else {
         	//Get result as well as update isLocal value in the database table
             update_isLocal(db1, fpath);
+            log_msg("\nis_local Has Been Successfully Updated!\n");
             displayMetadata(output, "Get File Result");
             drbDestroyMetadata(output, true);
+            log_msg("\nThe File Has Been Downloaded Successfully! \n");
 
         }
     }
@@ -519,15 +525,19 @@ int bb_open(const char *path, struct fuse_file_info *fi)
     // If the file is not local, after download it onto local storage
     // Open the file.
     fd = open(fpath, fi->flags);
+
     if (fd < 0)
 	retstat = bb_error("bb_open open");
 
     fi->fh = fd;
     log_fi(fi);
+    log_msg("\nOpen File!\n");
 
     // Get timestamp when the file was open
     update_atime(fpath);
+    log_msg("\natime Has Been Updated!\n");
     commit_transaction(db1);
+    log_msg("\Database Transaction Has Successfully Complete!\n");
     return retstat;
 
 }
@@ -608,7 +618,7 @@ int bb_write(const char *path, const char *buf, size_t size, off_t offset,
     update_isModified(db1, fpath);
     update_atime(fpath);
     update_mtime(fpath);
-    commit_transaciton(db1);
+    commit_transaction(db1);
 
 
 
