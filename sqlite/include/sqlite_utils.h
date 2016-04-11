@@ -8,6 +8,7 @@
 #ifndef SQLITE_UTILS_H_
 #define SQLITE_UTILS_H_
 
+#include <stddef.h>
 #include <sqlite3.h>
 #include <dropbox.h>
 

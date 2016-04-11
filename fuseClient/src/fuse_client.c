@@ -1168,7 +1168,7 @@ int ibc_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offse
 	int ret = 0;
 	int dir_cnt = 0;
 	directory** sub_dirs = search_subdirectories(BB_DATA->sqlite_conn, path_in_sqlite, &dir_cnt);
-	if (sub_dirs ！= NULL){
+	if (sub_dirs != NULL){
 		for (int i = 0; i < dir_cnt; ++i){
 			if (filler(buf, sub_dirs[i]->entry_name, NULL, 0) != 0) {
 				ret = ENOMEM;
@@ -1318,7 +1318,7 @@ int ibc_getattr(const char *path, struct stat *statbuf)
 int ibc_fgetattr(const char *path, struct stat *statbuf, struct fuse_file_info *fi)
 {
 	log_msg("\nibc_fgetattr: %s\n", path);
-	int ret = ibc_getattr(path, statbuf, fi);
+	int ret = ibc_getattr(path, statbuf);
 	log_msg("ibc_fgetattr: Completed\n");
 	return ret;
 }
