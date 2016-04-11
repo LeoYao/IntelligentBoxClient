@@ -72,7 +72,7 @@ long parse_time(char* time_string){
 	return (long)t_of_day;
 }
 
-int get_metadata(drbClient* cli, drbMetadata** metadata_ref, const char* remote_path){
+int get_dbx_metadata(drbClient* cli, drbMetadata** metadata_ref, const char* remote_path){
 
 	log_msg("\nget_metadata: Begin\n");
 	*metadata_ref = NULL;
@@ -111,7 +111,7 @@ int get_metadata(drbClient* cli, drbMetadata** metadata_ref, const char* remote_
 	return err;
 }
 
-int download_file(drbClient* cli, drbMetadata** metadata_ref, const char* remote_path, const char* local_path){
+int download_dbx_file(drbClient* cli, drbMetadata** metadata_ref, const char* remote_path, const char* local_path){
 
 	log_msg("\download_file: Begin\n");
 	*metadata_ref = NULL;
@@ -147,7 +147,7 @@ int download_file(drbClient* cli, drbMetadata** metadata_ref, const char* remote
 	return err;
 }
 
-void release_metadata(drbMetadata* metadata){
+void release_dbx_metadata(drbMetadata* metadata){
 	drbDestroyMetadata(metadata, true);
 }
 
