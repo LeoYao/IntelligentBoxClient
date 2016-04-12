@@ -163,7 +163,6 @@ char* get_file_name(const char* path){
 
 long get_current_epoch_time(){
 	time_t rawtime;
-	time(&time_t);
-
-	return (long)time_t;
+	time(&rawtime);
+	return (long)rawtime;
 }

@@ -370,7 +370,6 @@ int insert_directory(sqlite3* db, directory* data){
 	return 0;
 }
 
-
 int clean_subdirectories(sqlite3* db, char* parent_path){
 
 	log_msg("\clean_subdirectories: Begin\n");
