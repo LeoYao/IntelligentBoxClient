@@ -41,7 +41,7 @@ struct lru_entry
 
 typedef struct lru_entry lru_entry;
 
-sqlite3* init_db(char* dbfile_path);
+sqlite3* init_db(const char* dbfile_path);
 
 directory* new_directory(const char* full_path,
 		const char* parent_folder_full_path,
@@ -60,14 +60,15 @@ directory* new_directory(const char* full_path,
 directory* directory_from_dbx(drbMetadata* metadata);
 void free_directory(directory* dir);
 void free_directories(directory** dirs, int size);
-directory* search_directory(sqlite3* db, char* full_path);
-int update_time(sqlite3* db, char* full_path, int mode, long time);
-int update_isLocal(sqlite3* db, char* full_path, int mode);
-int update_isDeleted(sqlite3* db, char* full_path);
-int update_isModified(sqlite3* db, char* full_path);
+directory* search_directory(sqlite3* db, const char* full_path);
+int update_time(sqlite3* db, const char* full_path, int mode, long time);
+int update_isLocal(sqlite3* db, const char* full_path, int mode);
+int update_isDeleted(sqlite3* db, const char* full_path);
+int update_isModified(sqlite3* db, const char* full_path);
+int update_in_use_count(sqlite3* db, const char* full_path, int delta);
 int insert_directory(sqlite3* db, directory* data);
-int clean_subdirectories(sqlite3* db, char* parent_path);
-directory** search_subdirectories(sqlite3* db, char* parent_path, int* count);
+int clean_subdirectories(sqlite3* db, const char* parent_path);
+directory** search_subdirectories(sqlite3* db, const char* parent_path, int* count);
 
 int begin_transaction(sqlite3* db);
 int commit_transaction(sqlite3* db);

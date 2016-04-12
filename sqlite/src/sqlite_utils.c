@@ -230,24 +230,25 @@ directory** search_subdirectories(sqlite3* db, char* parent_path, int* count){
 	return datas;
 }
 
-int update_time(sqlite3* db, char* full_path, int mode, long time){
-	log_msg("\nUpdate_Time: Begin\n");
+int update_time(sqlite3* db, const char* full_path, int mode, long time){
+	log_msg("\nUpdate_Time: Begin [%s], mode[%d], time[%ld]\n", full_path, mode, time);
 	sqlite3_stmt *stmt;
 	int rc;
 	char* sql;
 	if(mode == 1){
 		sql = "UPDATE Directory SET atime = ? WHERE full_path = ?\0";
 		log_msg("\nUpdate mtime!\n");
-		}else if(mode == 0){
+	} else {
 		sql = "UPDATE Directory SET mtime = ? WHERE full_path = ?\0";
 		log_msg("\nUpdate atime!\n");
 	}
+
 	rc = sqlite3_prepare_v2(db, sql, -1, &stmt, 0);
 
 	if (rc == SQLITE_OK) {
 		log_msg("update_isLocal: Statement is prepared: %s\n", sql);
-		sqlite3_bind_int(stmt, 1, time);
-		sqlite3_bind_text(stmt, 2, full_path, -1, SQLITE_TRANSIENT);
+		rc += sqlite3_bind_int(stmt, 1, time);
+		rc += sqlite3_bind_text(stmt, 2, full_path, -1, SQLITE_TRANSIENT);
 		log_msg("update_isLocal: Statement is binded.\n");
 	} else {
 		log_msg("update_isLocal: Failed to prepare statement. Error message: %s\n", sqlite3_errmsg(db));
@@ -266,12 +267,12 @@ int update_time(sqlite3* db, char* full_path, int mode, long time){
 	sqlite3_finalize(stmt);
 
 	log_msg("update_isLocal: Completed\n");
-	return 0;
+	return rc;
 }
 
-int update_isLocal(sqlite3* db, char* full_path,int mode){
+int update_isLocal(sqlite3* db, const char* full_path, int mode){
 
-	log_msg("\nupdate_isLocal: Begin\n");
+	log_msg("\nupdate_isLocal: Begin [%s], mode [%d]\n", full_path, mode);
 	sqlite3_stmt *stmt;
 	int rc;
 	char* sql;
@@ -284,7 +285,7 @@ int update_isLocal(sqlite3* db, char* full_path,int mode){
 
 	if (rc == SQLITE_OK) {
 		log_msg("update_isLocal: Statement is prepared: %s\n", sql);
-		sqlite3_bind_text(stmt, 1, full_path, -1, SQLITE_TRANSIENT);
+		rc = sqlite3_bind_text(stmt, 1, full_path, -1, SQLITE_TRANSIENT);
 		log_msg("update_isLocal: Statement is binded.\n");
 	} else {
 		log_msg("update_isLocal: Failed to prepare statement. Error message: %s\n", sqlite3_errmsg(db));
@@ -303,12 +304,12 @@ int update_isLocal(sqlite3* db, char* full_path,int mode){
 	sqlite3_finalize(stmt);
 
 	log_msg("update_isLocal: Completed\n");
-	return 0;
+	return rc;
 }
 
-int update_isModified(sqlite3* db, char* full_path){
+int update_isModified(sqlite3* db, const char* full_path){
 
-	log_msg("\nupdate_isModified: Begin\n");
+	log_msg("\nupdate_isModified: Begin [%s]\n", full_path);
 	sqlite3_stmt *stmt;
 	int rc;
 	char* sql = "UPDATE Directory SET is_modified = 1 WHERE full_path = ?\0";
@@ -316,7 +317,7 @@ int update_isModified(sqlite3* db, char* full_path){
 
 	if (rc == SQLITE_OK) {
 		log_msg("update_isModified: Statement is prepared: %s\n", sql);
-		sqlite3_bind_text(stmt, 1, full_path, -1, SQLITE_TRANSIENT);
+		rc = sqlite3_bind_text(stmt, 1, full_path, -1, SQLITE_TRANSIENT);
 		log_msg("update_isModified: Statement is binded.\n");
 	} else {
 		log_msg("update_isModified: Failed to prepare statement. Error message: %s\n", sqlite3_errmsg(db));
@@ -335,11 +336,11 @@ int update_isModified(sqlite3* db, char* full_path){
 	sqlite3_finalize(stmt);
 
 	log_msg("update_isModified: Completed\n");
-	return 0;
+	return rc;
 }
 
-int update_isDeleted(sqlite3* db, char* full_path){
-	log_msg("\nupdate_isDeleted: Begin\n");
+int update_isDeleted(sqlite3* db, const char* full_path){
+	log_msg("\nupdate_isDeleted: Begin [%s]\n", full_path);
 	sqlite3_stmt *stmt;
 	int rc;
 	char* sql = "UPDATE Directory SET is_deleted = 1 WHERE full_path = ?\0";
@@ -347,7 +348,7 @@ int update_isDeleted(sqlite3* db, char* full_path){
 
 	if (rc == SQLITE_OK) {
 		log_msg("update_isDeleted: Statement is prepared: %s\n", sql);
-		sqlite3_bind_text(stmt, 1, full_path, -1, SQLITE_TRANSIENT);
+		rc = sqlite3_bind_text(stmt, 1, full_path, -1, SQLITE_TRANSIENT);
 		log_msg("update_isDeleted: Statement is binded.\n");
 	} else {
 		log_msg("update_isDeleted: Failed to prepare statement. Error message: %s\n", sqlite3_errmsg(db));
@@ -366,12 +367,45 @@ int update_isDeleted(sqlite3* db, char* full_path){
 	sqlite3_finalize(stmt);
 
 	log_msg("update_isDeleted: Completed\n");
-	return 0;
+	return rc;
+}
+
+
+int update_in_use_count(sqlite3* db, const char* full_path, int delta){
+	log_msg("\nupdate_in_use_count: Begin [%s]\n", full_path);
+	sqlite3_stmt *stmt;
+	int rc;
+	char* sql = "UPDATE Directory SET in_use_count = MAX(0, in_use_count + ?) WHERE full_path = ?\0";
+	rc = sqlite3_prepare_v2(db, sql, -1, &stmt, 0);
+
+	if (rc == SQLITE_OK) {
+		log_msg("update_in_use_count: Statement is prepared: %s\n", sql);
+		rc += sqlite3_bind_int(stmt, 1, delta);
+		rc += sqlite3_bind_text(stmt, 2, full_path, -1, SQLITE_TRANSIENT);
+		log_msg("update_in_use_count: Statement is binded.\n");
+	} else {
+		log_msg("update_in_use_count: Failed to prepare statement. Error message: %s\n", sqlite3_errmsg(db));
+	}
+
+	if (rc == SQLITE_OK){
+		rc = sqlite3_step(stmt);
+		if (rc == SQLITE_DONE){
+			log_msg("update_in_use_count: Successful\n");
+			rc = SQLITE_OK;
+		}else {
+			log_msg("update_in_use_count: An Error Has Occured! Error message: %s\n", sqlite3_errmsg(db));
+		}
+	}
+
+	sqlite3_finalize(stmt);
+
+	log_msg("update_in_use_count: Completed\n");
+	return rc;
 }
 
 int insert_directory(sqlite3* db, directory* data){
 
-	log_msg("\ninsert_directory: Begin\n");
+	log_msg("\ninsert_directory: Begin [%s]\n", data->full_path);
 	sqlite3_stmt *stmt;
 	int rc;
 	char* sql = "INSERT INTO Directory (full_path, parent_folder_full_path, entry_name, old_full_path, type, size, mtime, atime, is_locked, is_modified, is_local, is_deleted, in_use_count, revision) VALUES( ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)\0";
@@ -379,21 +413,21 @@ int insert_directory(sqlite3* db, directory* data){
 	rc = sqlite3_prepare_v2(db, sql, -1, &stmt, 0);
 	if (rc == SQLITE_OK) {
 		log_msg("insert_directory: Statement is prepared: %s\n", sql);
-        sqlite3_bind_text(stmt, 1, data->full_path, -1, SQLITE_TRANSIENT);
-        sqlite3_bind_text(stmt, 2, data->parent_folder_full_path, -1, SQLITE_TRANSIENT);
-        sqlite3_bind_text(stmt, 3, data->entry_name, -1, SQLITE_TRANSIENT);
-        sqlite3_bind_text(stmt, 4, data->old_full_path, -1, SQLITE_TRANSIENT);
-        sqlite3_bind_int(stmt, 5, data->type);
-        sqlite3_bind_int(stmt, 6, data->size);
-        sqlite3_bind_int(stmt, 7, data->atime);
-        sqlite3_bind_int(stmt, 8, data->mtime);
-        sqlite3_bind_int(stmt, 9, data->is_locked);
-        sqlite3_bind_int(stmt, 10, data->is_modified);
-        sqlite3_bind_int(stmt, 11, data->is_local);
-        sqlite3_bind_int(stmt, 12, data->is_delete);
-        sqlite3_bind_int(stmt, 13, data->in_use_count);
-        sqlite3_bind_text(stmt, 14, data->revision, -1, SQLITE_TRANSIENT);
-		log_msg("insert_directory: Statement is binded.\n");
+		rc += sqlite3_bind_text(stmt, 1, data->full_path, -1, SQLITE_TRANSIENT);
+		rc += sqlite3_bind_text(stmt, 2, data->parent_folder_full_path, -1, SQLITE_TRANSIENT);
+		rc += sqlite3_bind_text(stmt, 3, data->entry_name, -1, SQLITE_TRANSIENT);
+		rc += sqlite3_bind_text(stmt, 4, data->old_full_path, -1, SQLITE_TRANSIENT);
+		rc += sqlite3_bind_int(stmt, 5, data->type);
+		rc += sqlite3_bind_int(stmt, 6, data->size);
+		rc += sqlite3_bind_int(stmt, 7, data->atime);
+		rc += sqlite3_bind_int(stmt, 8, data->mtime);
+		rc += sqlite3_bind_int(stmt, 9, data->is_locked);
+		rc += sqlite3_bind_int(stmt, 10, data->is_modified);
+		rc += sqlite3_bind_int(stmt, 11, data->is_local);
+		rc += sqlite3_bind_int(stmt, 12, data->is_delete);
+		rc += sqlite3_bind_int(stmt, 13, data->in_use_count);
+		rc += sqlite3_bind_text(stmt, 14, data->revision, -1, SQLITE_TRANSIENT);
+		rc += log_msg("insert_directory: Statement is binded.\n");
 	} else {
 		log_msg("insert_directory: Failed to prepare statement. Error message: %s\n", sqlite3_errmsg(db));
 	}
@@ -414,7 +448,7 @@ int insert_directory(sqlite3* db, directory* data){
 	return 0;
 }
 
-int clean_subdirectories(sqlite3* db, char* parent_path){
+int clean_subdirectories(sqlite3* db, const char* parent_path){
 
 	log_msg("\clean_subdirectories: Begin\n");
 	sqlite3_stmt *stmt;
@@ -424,7 +458,7 @@ int clean_subdirectories(sqlite3* db, char* parent_path){
 	rc = sqlite3_prepare_v2(db, sql, -1, &stmt, 0);
 	if (rc == SQLITE_OK) {
 		log_msg("clean_subdirectories: Statement is prepared: %s\n", sql);
-        sqlite3_bind_text(stmt, 1, parent_path, -1, SQLITE_TRANSIENT);
+		rc += sqlite3_bind_text(stmt, 1, parent_path, -1, SQLITE_TRANSIENT);
 		log_msg("clean_subdirectories: Statement is binded.\n");
 	} else {
 		log_msg("clean_subdirectories: Failed to prepare statement. Error message: %s\n", sqlite3_errmsg(db));
@@ -447,7 +481,7 @@ int clean_subdirectories(sqlite3* db, char* parent_path){
 }
 
 //Initiating database
-sqlite3* init_db(char* dbfile_path){
+sqlite3* init_db(const char* dbfile_path){
 
 	int rc;
 	char *zErrMsg = 0;
@@ -526,7 +560,7 @@ sqlite3* init_db(char* dbfile_path){
 	sql = "insert or ignore into lru_queue (curr, prev) values('.tail', '.head');";
 	log_msg("init_db: initializing table LRU_QUEUE (tail)\n", sql);
 	rc = sqlite3_exec(sqlite_conn, sql, 0, 0, &zErrMsg);
-	if( rc!=SQLITE_OK ){
+	if( rc != SQLITE_OK ){
 		log_msg("init_db: Failed to initalize table LRU_QUEUE (tail). Error message: %s\n", zErrMsg);
 		sqlite3_free(zErrMsg);
 	}
