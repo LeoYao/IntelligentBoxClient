@@ -24,4 +24,5 @@ char* copy_text(const char* tmp);
 char* substring(const char* str, int start, int end);
 char* get_parent_path(const char* path);
 char* get_file_name(const char* path);
+long get_current_epoch_time();
 #endif /* COMMON_UTILS_HPP_ */

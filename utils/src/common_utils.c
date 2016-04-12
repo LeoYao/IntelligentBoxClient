@@ -160,3 +160,10 @@ char* get_file_name(const char* path){
 
 	return file_name;
 }
+
+long get_current_epoch_time(){
+	time_t rawtime;
+	time(&time_t);
+
+	return (long)time_t;
+}
