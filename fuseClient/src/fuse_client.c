@@ -105,6 +105,8 @@ int bb_mknod(const char *path, mode_t mode, dev_t dev)
 	int retstat = 0;
 	int fd;
 	directory* dir = NULL;
+	log_msg("bb_mknod: get_current_epoch_time\n");
+	long now = get_current_epoch_time();
 
 	//Search to see if the directory is already in the database
 	log_msg("bb_mknod: begin_transaction");
@@ -128,10 +130,6 @@ int bb_mknod(const char *path, mode_t mode, dev_t dev)
 	}
 
 	if (retstat >= 0){
-		log_msg("bb_mknod: get_current_epoch_time\n");
-
-		long now = get_current_epoch_time();
-
 		dir = new_directory(
 				path_in_sqlite,
 				parent_path_in_sqlite,
@@ -221,6 +219,9 @@ int ibc_mkdir(const char *path, mode_t mode)
     char fpath[PATH_MAX];
     bb_fullpath(fpath, path);
 
+    directory* dir = NULL;
+
+    log_msg("ibc_mkdir: get_current_epoch_time\n");
     long time = get_current_epoch_time();
 
 	//Begin transaction
@@ -233,7 +234,7 @@ int ibc_mkdir(const char *path, mode_t mode)
     //In case previous deleted metadata has not been synchronized
     if (retstat >= 0){
     	log_msg("ibc_mkdir: search_directory [%s]\n", path_in_sqlite);
-    	directory* dir = search_directory(BB_DATA->sqlite_conn, path_in_sqlite);
+    	dir = search_directory(BB_DATA->sqlite_conn, path_in_sqlite);
     	if (dir != NULL){
     		retstat = -EAGAIN;
     	}
@@ -241,7 +242,7 @@ int ibc_mkdir(const char *path, mode_t mode)
 	}
 
     if (retstat >= 0){
-    	directory* dir = new_directory(
+    	dir = new_directory(
     				path_in_sqlite,
     				parent_path_in_sqlite,
     				file_name,
@@ -300,15 +301,20 @@ int ibc_mkdir(const char *path, mode_t mode)
 int ibc_unlink(const char *path)
 {
 	log_msg("\nibc_unlink(path=\"%s\")\n",path);
+	directory* dir = NULL;
+
     int retstat = 0;
+    int err_dbx = DRBERR_OK;
+    int err_sqlite = 0;
+
+    char fpath[PATH_MAX];
+	bb_fullpath(fpath, path);
 
     char* path_in_sqlite = path;
     if (strlen(path) == 1){
 		path_in_sqlite = "\0";
 	}
-    int err_dbx = DRBERR_OK;
-    int err_sqlite = 0;
-    directory* dir = NULL;
+
     long time = get_current_epoch_time();
 
     //Begin transaction
@@ -360,9 +366,6 @@ int ibc_unlink(const char *path)
 			}
 
 			if (retstat >= 0){
-				char fpath[PATH_MAX];
-				bb_fullpath(fpath, path);
-
 				log_msg("ibc_unlink: unlink [%s]\n", fpath);
 				retstat = unlink(fpath);
 				if (retstat < 0){
@@ -406,11 +409,14 @@ int ibc_rmdir(const char *path)
     if (strlen(path) == 1){
 		path_in_sqlite = "\0";
 	}
+    char fpath[PATH_MAX];
 
     int err_sqlite = 0;
     int subdir_cnt = 0;
+    long time = get_current_epoch_time();
 
     directory* dir = NULL;
+    directory** subdirs = NULL;
 
     log_msg("ibc_rmdir: begin_transaction\n");
     int err_trans = begin_transaction(BB_DATA->sqlite_conn);
@@ -427,7 +433,6 @@ int ibc_rmdir(const char *path)
     }
 
     if (retstat >= 0){
-        long time = get_current_epoch_time();
 		if(dir->is_local == 0){
 			log_msg("ibc_rmdir: update_isDeleted [%s]\n", path_in_sqlite);
 			err_sqlite += update_isDeleted(BB_DATA->sqlite_conn, path_in_sqlite);
@@ -441,12 +446,10 @@ int ibc_rmdir(const char *path)
 				retstat = -EIO;
 			}
 		}else{
-
-			directory** subdirs = search_subdirectories(BB_DATA->sqlite_conn, path_in_sqlite, &subdir_cnt);
+			subdirs = search_subdirectories(BB_DATA->sqlite_conn, path_in_sqlite, &subdir_cnt);
 			if (subdirs != NULL){
 				retstat = -ENOTEMPTY;
 			}
-			free_directories(subdirs, subdir_cnt);
 
 			if (retstat >= 0){
 				log_msg("ibc_rmdir: update_isDeleted [%s]\n", path_in_sqlite);
@@ -467,7 +470,6 @@ int ibc_rmdir(const char *path)
 			}
 
 			if (retstat >= 0){
-			    char fpath[PATH_MAX];
 			    bb_fullpath(fpath, path);
 				retstat = rmdir(fpath);
 				if (retstat < 0)
@@ -495,6 +497,7 @@ int ibc_rmdir(const char *path)
 
 	log_msg("ibc_rmdir: release memory\n");
 	free_directory(dir);
+	free_directories(subdirs, subdir_cnt);
 
 	log_msg("ibc_rmdir: Completed\n");
 	return retstat;
@@ -511,6 +514,8 @@ int bb_truncate(const char *path, off_t newsize)
 	if (strlen(path) == 1){
 		path_in_sqlite = "\0";
 	}
+    char fpath[PATH_MAX];
+    bb_fullpath(fpath, path);
 
     log_msg("bb_truncate: begin_transaction\n");
     int err_trans = begin_transaction(BB_DATA->sqlite_conn);
@@ -527,8 +532,6 @@ int bb_truncate(const char *path, off_t newsize)
 	}
 
 	if (retstat >= 0){
-	    char fpath[PATH_MAX];
-	    bb_fullpath(fpath, path);
 		log_msg("bb_truncate: truncate [%s], size [%lld]\n", fpath, newsize);
 		retstat = truncate(fpath, newsize);
 		if (retstat < 0)
@@ -640,7 +643,8 @@ int bb_open(const char *path, struct fuse_file_info *fi)
 	if (strlen(path) == 1){
 		path_in_sqlite = "\0";
 	}
-
+	int err_dbx = 0;
+	int err_sqlite = 0;
     int retstat = 0;
     int fd;
     directory* dir = NULL;
@@ -669,7 +673,7 @@ int bb_open(const char *path, struct fuse_file_info *fi)
 
 	if (retstat >= 0){
 		log_msg("bb_open: update_isLocal [%s]\n", path_in_sqlite);
-		int err_sqlite = update_isLocal(BB_DATA->sqlite_conn, path_in_sqlite, 1);
+		err_sqlite = update_isLocal(BB_DATA->sqlite_conn, path_in_sqlite, 1);
 		if (err_sqlite != 0){
 			retstat = -EIO;
 		}
@@ -677,7 +681,7 @@ int bb_open(const char *path, struct fuse_file_info *fi)
 
 	if (retstat >= 0){
 		log_msg("bb_open: update atime [%s], time[%ld]\n", path_in_sqlite, time);
-		int err_sqlite += update_time(BB_DATA->sqlite_conn, path_in_sqlite, 1, time);
+		err_sqlite += update_time(BB_DATA->sqlite_conn, path_in_sqlite, 1, time);
 		if (err_sqlite != 0){
 			retstat = -EIO;
 		}
@@ -693,7 +697,7 @@ int bb_open(const char *path, struct fuse_file_info *fi)
 
 	if (retstat >= 0){
 		log_msg("bb_open: remove_lru [%s]\n", path_in_sqlite);
-		int err_sqlite += remove_lru(BB_DATA->sqlite_conn, path_in_sqlite, 0);
+		err_sqlite += remove_lru(BB_DATA->sqlite_conn, path_in_sqlite, 0);
 		if (err_sqlite != 0){
 			retstat = -EIO;
 		}
@@ -705,7 +709,7 @@ int bb_open(const char *path, struct fuse_file_info *fi)
 		if(dir->is_local == 0){
 			drbMetadata* metadata;
 			log_msg("bb_open: download_dbx_file from [%s] to [%s]\n", path, fpath);
-			int err_dbx = download_dbx_file(BB_DATA->client, &metadata, path, fpath);
+			err_dbx = download_dbx_file(BB_DATA->client, &metadata, path, fpath);
 
 			if (err_dbx != 0){
 				retstat = -EIO;
@@ -803,6 +807,7 @@ int bb_write(const char *path, const char *buf, size_t size, off_t offset,
 		path_in_sqlite = "\0";
 	}
 
+	int err_sqlite = 0;
     int retstat = 0;
     int err_trans = 0;
 
@@ -814,7 +819,7 @@ int bb_write(const char *path, const char *buf, size_t size, off_t offset,
 
     if (retstat >= 0){
     	log_msg("bb_write: update_isModified [%s]\n", path_in_sqlite);
-    	int err_sqlite = update_isModified(BB_DATA->sqlite_conn, path_in_sqlite);
+    	err_sqlite = update_isModified(BB_DATA->sqlite_conn, path_in_sqlite);
     	if (err_sqlite != 0){
     		retstat = -EIO;
     	}
@@ -933,6 +938,7 @@ int bb_release(const char *path, struct fuse_file_info *fi)
 		path_in_sqlite = "\0";
 	}
 
+	int err_sqlite = 0;
     int retstat = 0;
     int err_trans = 0;
     directory* dir;
@@ -953,7 +959,7 @@ int bb_release(const char *path, struct fuse_file_info *fi)
 
 	if (retstat >= 0){
 		log_msg("bb_release: update_in_use_count [%s]\n", path_in_sqlite);
-		int err_sqlite += update_in_use_count(BB_DATA->sqlite_conn, path_in_sqlite, -1);
+		err_sqlite += update_in_use_count(BB_DATA->sqlite_conn, path_in_sqlite, -1);
 		if (err_sqlite != 0){
 			retstat = -EIO;
 		}
@@ -961,7 +967,7 @@ int bb_release(const char *path, struct fuse_file_info *fi)
 
 	if (retstat >= 0){
 		if (dir->in_use_count == 1){
-			int err_sqlite += push_lru(BB_DATA->sqlite_conn, path_in_sqlite, -1);
+			err_sqlite += push_lru(BB_DATA->sqlite_conn, path_in_sqlite, -1);
 			if (err_sqlite != 0){
 				retstat = -EIO;
 			}
@@ -1318,10 +1324,13 @@ int ibc_releasedir(const char *path, struct fuse_file_info *fi)
 int bb_ftruncate(const char *path, off_t offset, struct fuse_file_info *fi)
 {
     log_msg("\nbb_ftruncate(path=\"%s\", offset=%lld, fi=0x%08x)\n", path, offset, fi);
-	int retstat = 0;
+
+    int retstat = 0;
+	int err_sqlite = 0;
+
 	char fpath[PATH_MAX];
 	bb_fullpath(fpath, path);
-	int err_sqlite;
+
 	log_msg("bb_ftruncate: begin_transaction\n");
 	int err_trans = begin_transaction(BB_DATA->sqlite_conn);
 	if (err_trans != 0){
@@ -1418,7 +1427,9 @@ int ibc_getattr(const char *path, struct stat *statbuf)
 
 	if (dir == NULL || dir->is_delete){
 		ret = -ENOENT;
-	} else {
+	}
+
+	if (ret >= 0){
 		log_msg("ibc_getattr: fill in statbuf\n");
 		statbuf->st_size = dir->size;
 		statbuf->st_uid = getuid();
@@ -1437,7 +1448,7 @@ int ibc_getattr(const char *path, struct stat *statbuf)
 			statbuf->st_mode = S_IFREG | 0755;
 			statbuf->st_nlink = 1;
 		}
-		log_stat(statbuf);
+		//log_stat(statbuf);
 	}
 
 	free_directory(dir);

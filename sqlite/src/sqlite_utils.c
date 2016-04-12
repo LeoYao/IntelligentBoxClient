@@ -949,14 +949,20 @@ int push_lru(sqlite3* db, const char* path, int create_transaction){
             if (prev == NULL || next == NULL){
             	log_msg("push_lru: Failed to find prev or next\n");
             	rc = -1;
-            } else {
-            	log_msg("push_lru: update prev->nextand next->prev\n");
+            }
+
+            if (rc == SQLITE_OK) {
+            	log_msg("push_lru: update prev->next\n");
             	free(prev->next);
-            	free(next->prev);
             	prev->next = copy_text(curr->next);
+            	rc = update_lru(db, prev);
+            }
+
+            if (rc == SQLITE_OK) {
+            	log_msg("push_lru: update next->prev\n");
+            	free(next->prev);
             	next->prev = copy_text(curr->prev);
-            	rc += update_lru(db, prev);
-            	rc += update_lru(db, next);
+            	rc = update_lru(db, next);
             }
 		}
 	}
@@ -985,17 +991,21 @@ int push_lru(sqlite3* db, const char* path, int create_transaction){
 		curr->next = copy_text(TAIL);
 		free(curr->prev);
 		curr->prev = copy_text(tail_prev->curr);
-		rc += update_lru(db, curr);
+		rc = update_lru(db, curr);
+	}
 
+	if (rc == SQLITE_OK){
 		log_msg("push_lru: update tail->prev)\n");
 		free(tail->prev);
 		tail->prev = copy_text(curr->curr);
-		rc += update_lru(db, tail);
+		rc = update_lru(db, tail);
+	}
 
+	if (rc == SQLITE_OK){
 		log_msg("push_lru: update tail_prev->next\n");
 		free(tail_prev->next);
 		tail_prev->next = copy_text(curr->curr);
-		rc += update_lru(db, tail_prev);
+		rc = update_lru(db, tail_prev);
 	}
 
 	if (in_transaction){
@@ -1043,16 +1053,23 @@ int remove_lru(sqlite3* db, const char* path, int create_transaction){
 		to_remove = select_lru(db, path);
 	}
 
-	if (to_remove != NULL){
-		log_msg("push_lru: find prev\n");
-		prev = select_lru(db, to_remove->prev);
+	if (rc == SQLITE_OK && to_remove != NULL){
+		if (rc == SQLITE_OK){
+			log_msg("push_lru: find prev\n");
+			prev = select_lru(db, to_remove->prev);
+			if (prev == NULL || next == NULL){
+				log_msg("push_lru: Failed to find prev\n");
+				rc = -1;
+			}
+		}
 
-		log_msg("push_lru: find next\n");
-		next = select_lru(db, to_remove->next);
-
-		if (prev == NULL || next == NULL){
-			log_msg("push_lru: Failed to find prev or next\n");
-			rc = -1;
+		if (rc == SQLITE_OK){
+			log_msg("push_lru: find next\n");
+			next = select_lru(db, to_remove->next);
+			if (prev == NULL || next == NULL){
+				log_msg("push_lru: Failed to find next\n");
+				rc = -1;
+			}
 		}
 
 		if (rc == SQLITE_OK){
@@ -1085,7 +1102,7 @@ int remove_lru(sqlite3* db, const char* path, int create_transaction){
 		}
 	}
 
-	log_msg("remove_lru: free memory\n");
+	log_msg("remove_lru: release memory\n");
 	free_lru(to_remove);
 	free_lru(prev);
 	free_lru(next);
