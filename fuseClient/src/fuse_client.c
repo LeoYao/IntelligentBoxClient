@@ -68,38 +68,6 @@ static void bb_metadata_path(char fpath[PATH_MAX], const char *path)
 }
 
 
-/** Read the target of a symbolic link
- *
- * The buffer should be filled with a null terminated string.  The
- * buffer size argument includes the space for the terminating
- * null character.  If the linkname is too long to fit in the
- * buffer, it should be truncated.  The return value should be 0
- * for success.
- */
-// Note the system readlink() will truncate and lose the terminating
-// null.  So, the size passed to to the system readlink() must be one
-// less than the size passed to bb_readlink()
-// bb_readlink() code by Bernardo F Costa (thanks!)
-int bb_readlink(const char *path, char *link, size_t size)
-{
-    int retstat = 0;
-    char fpath[PATH_MAX];
-
-    log_msg("\nbb_readlink(path=\"%s\", link=\"%s\", size=%d)\n",
-	  path, link, size);
-    bb_fullpath(fpath, path);
-
-    retstat = readlink(fpath, link, size - 1);
-    if (retstat < 0)
-	retstat = bb_error("bb_readlink readlink");
-    else  {
-	link[retstat] = '\0';
-	retstat = 0;
-    }
-
-    return retstat;
-}
-
 /** Create a file node
  *
  * There is no create() operation, mknod() will be called for
@@ -141,7 +109,7 @@ int bb_mknod(const char *path, mode_t mode, dev_t dev)
 	int err_trans = begin_transaction(BB_DATA->sqlite_conn);
 
 	if (err_trans != 0){
-		retstat = EBUSY;
+		retstat = -EBUSY;
 	}
 
 	if (retstat >= 0)
@@ -461,99 +429,6 @@ int ibc_rmdir(const char *path)
     return retstat;
 }
 
-/** Create a symbolic link */
-// The parameters here are a little bit confusing, but do correspond
-// to the symlink() system call.  The 'path' is where the link points,
-// while the 'link' is the link itself.  So we need to leave the path
-// unaltered, but insert the link into the mounted directory.
-int bb_symlink(const char *path, const char *link)
-{
-    int retstat = 0;
-    char flink[PATH_MAX];
-
-    log_msg("\nbb_symlink(path=\"%s\", link=\"%s\")\n",
-	    path, link);
-    bb_fullpath(flink, link);
-
-    retstat = symlink(path, flink);
-    if (retstat < 0)
-	retstat = bb_error("bb_symlink symlink");
-
-    return retstat;
-}
-
-/** Rename a file */
-// both path and newpath are fs-relative
-int bb_rename(const char *path, const char *newpath)
-{
-    int retstat = 0;
-    char fpath[PATH_MAX];
-    char fnewpath[PATH_MAX];
-
-    log_msg("\nbb_rename(fpath=\"%s\", newpath=\"%s\")\n",
-	    path, newpath);
-    bb_fullpath(fpath, path);
-    bb_fullpath(fnewpath, newpath);
-
-    retstat = rename(fpath, fnewpath);
-    if (retstat < 0)
-	retstat = bb_error("bb_rename rename");
-
-    return retstat;
-}
-
-/** Create a hard link to a file */
-int bb_link(const char *path, const char *newpath)
-{
-    int retstat = 0;
-    char fpath[PATH_MAX], fnewpath[PATH_MAX];
-
-    log_msg("\nbb_link(path=\"%s\", newpath=\"%s\")\n",
-	    path, newpath);
-    bb_fullpath(fpath, path);
-    bb_fullpath(fnewpath, newpath);
-
-    retstat = link(fpath, fnewpath);
-    if (retstat < 0)
-	retstat = bb_error("bb_link link");
-
-    return retstat;
-}
-
-/** Change the permission bits of a file */
-int bb_chmod(const char *path, mode_t mode)
-{
-    int retstat = 0;
-    char fpath[PATH_MAX];
-
-    log_msg("\nbb_chmod(fpath=\"%s\", mode=0%03o)\n",
-	    path, mode);
-    bb_fullpath(fpath, path);
-
-    retstat = chmod(fpath, mode);
-    if (retstat < 0)
-	retstat = bb_error("bb_chmod chmod");
-
-    return retstat;
-}
-
-/** Change the owner and group of a file */
-int bb_chown(const char *path, uid_t uid, gid_t gid)
-
-{
-    int retstat = 0;
-    char fpath[PATH_MAX];
-
-    log_msg("\nbb_chown(path=\"%s\", uid=%d, gid=%d)\n",
-	    path, uid, gid);
-    bb_fullpath(fpath, path);
-
-    retstat = chown(fpath, uid, gid);
-    if (retstat < 0)
-	retstat = bb_error("bb_chown chown");
-
-    return retstat;
-}
 
 /** Change the size of a file */
 int bb_truncate(const char *path, off_t newsize)
@@ -629,7 +504,7 @@ int bb_open(const char *path, struct fuse_file_info *fi)
     int err_trans = begin_transaction(BB_DATA->sqlite_conn);
 
     if (err_trans != 0){
-    	retstat = EBUSY;
+    	retstat = -EBUSY;
 	}
 
     if (retstat >= 0)
@@ -1302,35 +1177,22 @@ int ibc_fgetattr(const char *path, struct stat *statbuf, struct fuse_file_info *
 
 struct fuse_operations bb_oper = {
 	  .getattr = ibc_getattr,
-	  //readlink = bb_readlink,
-
-	  // no .getdir -- that's deprecated
-	  //*getdir = NULL,
 	  .mknod = bb_mknod,
 	  .mkdir = ibc_mkdir,
 	  .unlink = ibc_unlink,
 	  .rmdir = ibc_rmdir,
-	  /*
-	  symlink = bb_symlink,
-	  rename = bb_rename,
-	  link = bb_link,
-	  chmod = bb_chmod,
-	  chown = bb_chown,*/
 	  .truncate = bb_truncate,
 	  .utime = bb_utime,
 	  .open = bb_open,
 	  .read = bb_read,
 	  .write = bb_write,
-
-	  /** Just a placeholder, don't set */ // huh???
-	  /*statfs = bb_statfs,*/
+	  .statfs = bb_statfs, /** Just a placeholder*/
 	  .flush = bb_flush,
 	  .release = bb_release,
 	  .fsync = bb_fsync,
 	  .opendir = ibc_opendir,
 	  .readdir = ibc_readdir,
 	  .releasedir = ibc_releasedir,
-	  //fsyncdir = bb_fsyncdir,
 	  .init = ibc_init,
 	  .destroy = ibc_destroy,
 	  .access = ibc_access,
