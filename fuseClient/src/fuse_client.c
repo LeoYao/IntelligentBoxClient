@@ -212,28 +212,33 @@ int bb_mknod(const char *path, mode_t mode, dev_t dev)
 }
 
 /** Create a directory */
-int bb_mkdir(const char *path, mode_t mode)
+int ibc_mkdir(const char *path, mode_t mode)
 {
 	int rc;
 	char *zErrMsg = 0;
     int retstat = 0;
     char fpath[PATH_MAX];
+    char* path_in_sqlite = path;
     bb_fullpath(fpath, path);
-    char* parent_path = get_parent_path(fpath);
-    char* file_name = get_file_name(fpath);
+    char* parent_path = get_parent_path(path);
+    char* file_name = get_file_name(path);
+    int err_dbx = DRBERR_OK;
+    int err_sqlite = 0;
 
 //    drbClient* cli = BB_DATA->client;
     sqlite3* db1 = BB_DATA->sqlite_conn;
 
-    log_msg("\nbb_mkdir(path=\"%s\", mode=0%3o)\n",
+    log_msg("\nibc_mkdir(path=\"%s\", mode=0%3o)\n",
 	    path, mode);
     bb_fullpath(fpath, path);
     retstat = mkdir(fpath, mode);
     if (retstat < 0){
-    	retstat = bb_error("bb_mkdir mkdir");
+    	retstat = bb_error("ibc_mkdir mkdir");
     }else{
+    	//Begin transaction
+    	int err_trans = begin_transaction(BB_DATA->sqlite_conn);
     	directory* dir = new_directory(
-    				fpath,
+    				path_in_sqlite,
     				parent_path,
     				file_name,
     				"",
@@ -248,9 +253,24 @@ int bb_mkdir(const char *path, mode_t mode)
     				0,
     				""
     				);
-    	insert_directory(db1, dir);
+    	err_sqlite = insert_directory(db1, dir);
+
     	log_msg("\nInsert Directory Info Into Database Table After mkdir!\n");
     	free_directory(dir);
+    	//Finish transaction
+    	if (err_trans == 0){
+    		if (err_sqlite == 0){
+    			commit_transaction(BB_DATA->sqlite_conn);
+    		    log_msg("\nUpdate Database Table After mkdir!\n");
+    		}
+    		else{
+    			rollback_transaction(BB_DATA->sqlite_conn);
+    		    log_msg("\nRollback Database Table After mkdir!\n");
+    		}
+    	}
+     else {
+    	retstat = ENOENT;
+    }
     }
     return retstat;
 }
@@ -273,22 +293,42 @@ int bb_unlink(const char *path)
 }
 
 /** Remove a directory */
-int bb_rmdir(const char *path)
+int ibc_rmdir(const char *path)
 {
     int retstat = 0;
     char fpath[PATH_MAX];
+    sqlite3* db1 = BB_DATA->sqlite_conn;
+    char* path_in_sqlite = path;
+    int err_dbx = DRBERR_OK;
+    int err_sqlite = 0;
 
-    log_msg("\nbb_rmdir(path=\"%s\")\n",
+    log_msg("\nibc_rmdir(path=\"%s\")\n",
 	    path);
     bb_fullpath(fpath, path);
 
     retstat = rmdir(fpath);
     if (retstat < 0)
-	retstat = bb_error("bb_rmdir rmdir");
+	retstat = bb_error("ibc_rmdir rmdir");
 
    //Update the database table to set is_deleted to 1
-    update_isDeleted(fpath);
-    log_msg("\nUpdate Database Table After rmdir!\n");
+    //Begin transaction
+    int err_trans = begin_transaction(BB_DATA->sqlite_conn);
+    err_sqlite = update_isDeleted(db1, path_in_sqlite);
+	//Finish transaction
+	if (err_trans == 0){
+		if (err_sqlite == 0){
+			commit_transaction(BB_DATA->sqlite_conn);
+		    log_msg("\nUpdate Database Table After rmdir!\n");
+		}
+		else{
+			rollback_transaction(BB_DATA->sqlite_conn);
+		    log_msg("\nRollback Database Table After rmdir!\n");
+		}
+	}
+ else {
+	retstat = ENOENT;
+}
+
     return retstat;
 }
 
@@ -1240,7 +1280,7 @@ int ibc_getattr(const char *path, struct stat *statbuf)
 		}
 		log_stat(statbuf);
 	} else {
-		ret = EBADF;
+		ret = -ENOENT;
 	}
 
 
@@ -1278,10 +1318,12 @@ struct fuse_operations bb_oper = {
 
 	  // no .getdir -- that's deprecated
 	  /*getdir = NULL,
-	  mknod = bb_mknod,
-	  mkdir = bb_mkdir,
-	  unlink = bb_unlink,
-	  rmdir = bb_rmdir,
+	  mknod = bb_mknod,*/
+	  .mkdir = ibc_mkdir,
+	  /*
+	  unlink = bb_unlink,*/
+	  .rmdir = ibc_rmdir,
+	  /*
 	  symlink = bb_symlink,
 	  rename = bb_rename,
 	  link = bb_link,
