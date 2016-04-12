@@ -79,6 +79,7 @@ int bb_mknod(const char *path, mode_t mode, dev_t dev)
 	log_msg("\nbb_mknod(path=\"%s\", mode=0%3o, dev=%lld)\n", path, mode, dev);
 
 	int retstat = 0;
+	int err_sqlite = 0;
 	//local full path
 	char fpath[PATH_MAX];
 	bb_fullpath(fpath, path);
@@ -101,8 +102,6 @@ int bb_mknod(const char *path, mode_t mode, dev_t dev)
 		parent_path_in_sqlite = copy_text(".");
 	}
 
-	int err_sqlite = 0;
-	int retstat = 0;
 	int fd;
 	directory* dir = NULL;
 	log_msg("bb_mknod: get_current_epoch_time\n");
@@ -689,7 +688,7 @@ int bb_open(const char *path, struct fuse_file_info *fi)
 
 	if (retstat >= 0){
 		log_msg("bb_open: update_in_use_count [%s]\n", path_in_sqlite);
-		int err_sqlite += update_in_use_count(BB_DATA->sqlite_conn, path_in_sqlite, 1);
+		err_sqlite += update_in_use_count(BB_DATA->sqlite_conn, path_in_sqlite, 1);
 		if (err_sqlite != 0){
 			retstat = -EIO;
 		}
@@ -952,7 +951,7 @@ int bb_release(const char *path, struct fuse_file_info *fi)
     if (retstat >= 0){
 		log_msg("bb_release: search_directory [%s]\n", path_in_sqlite);
 		dir = search_directory(BB_DATA->sqlite_conn, path_in_sqlite);
-		if (dir == NULL 0){
+		if (dir == NULL){
 			retstat = -EIO;
 		}
 	}
@@ -1338,8 +1337,8 @@ int bb_ftruncate(const char *path, off_t offset, struct fuse_file_info *fi)
 	}
 
 	if (retstat >= 0){
-		log_msg(nbb_ftruncate: update_size\n");
-		err_sqlite = update_size(BB_DATA->sqlite_conn, fpath, newsize);
+		log_msg("bb_ftruncate: update_size\n");
+		err_sqlite = update_size(BB_DATA->sqlite_conn, fpath, offset);
 		if (err_sqlite != SQLITE_OK){
 			retstat = -EIO;
 		}

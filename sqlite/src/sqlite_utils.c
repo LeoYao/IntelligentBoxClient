@@ -878,14 +878,14 @@ lru_entry* pop_lru(sqlite3* db, int create_transaction){
 		log_msg("pop_lru: update head->next\n");
 		free(head->next);
 		head->next = copy_text(result->next);
-		rc = update_lru(BB_DATA->sqlite_conn, head);
+		rc = update_lru(db, head);
 	}
 
 	if (rc == SQLITE_OK){
 		log_msg("pop_lru: update next->prev\n");
 		free(next->prev);
 		next->prev = copy_text(result->prev);
-		rc = update_lru(BB_DATA->sqlite_conn, next);
+		rc = update_lru(db, next);
 	}
 
 	if (rc == SQLITE_OK){
@@ -937,14 +937,14 @@ int push_lru(sqlite3* db, const char* path, int create_transaction){
 		if (curr == NULL){
 			log_msg("push_lru: create curr [%s]\n", path);
 			curr = (lru_entry*)malloc(sizeof(lru_entry));
-			curr->curr = copy_txt(path);
+			curr->curr = copy_text(path);
 			rc = insert_lru(db, curr);
 		} else {
 			log_msg("push_lru: find prev [%s]\n", curr->prev);
-            prev = select_lru(BB_DATA->sqlite_conn, curr->prev);
+            prev = select_lru(db, curr->prev);
 
             log_msg("push_lru: find next [%s]\n", curr->next);
-            next = select_lru(BB_DATA->sqlite_conn, curr->next);
+            next = select_lru(db, curr->next);
 
             if (prev == NULL || next == NULL){
             	log_msg("push_lru: Failed to find prev or next\n");
@@ -1088,7 +1088,7 @@ int remove_lru(sqlite3* db, const char* path, int create_transaction){
 
 		if (rc == SQLITE_OK){
 			log_msg("push_lru: delete to_remove\n");
-			rc = delete_lru(BB_DATA->sqlite_conn, to_remove->curr);
+			rc = delete_lru(db, to_remove->curr);
 		}
 	}
 
