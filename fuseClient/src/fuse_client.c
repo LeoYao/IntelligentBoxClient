@@ -46,7 +46,7 @@ static int bb_error(char *str)
 {
     int ret = -errno;
 
-    log_msg("    ERROR %s: %s\n", str, strerror(errno));
+    log_msg("%s: Error message: %s\n", str, strerror(errno));
 
     return ret;
 }
@@ -325,10 +325,9 @@ int ibc_rmdir(const char *path)
 		    log_msg("\nRollback Database Table After rmdir!\n");
 		}
 	}
- else {
-	retstat = ENOENT;
-}
-
+	else {
+		retstat = ENOENT;
+	}
     return retstat;
 }
 
@@ -478,84 +477,87 @@ int bb_utime(const char *path, struct utimbuf *ubuf)
  */
 int bb_open(const char *path, struct fuse_file_info *fi)
 {
-	void* output;
-	int err;
-	int rc;
-	char *zErrMsg = 0;
-	char fpath[PATH_MAX];
-	bb_fullpath(fpath, path);
-	int* is_local;
+	log_msg("\nbb_open: [%s]\n", path);
 
-	drbClient* cli = BB_DATA->client;
-	sqlite3* db1 = BB_DATA->sqlite_conn;
+	char* path_in_sqlite = path;
+	if (strlen(path) == 1){
+		path_in_sqlite = "\0";
+	}
 
     int retstat = 0;
     int fd;
-    int* i =0;
     directory* dir;
 
-    //Search to see if the directory is already in the database
-    begin_transaction(db1);
-    log_msg("\nBegin transaction function has been called!\n");
-    dir = search_directory(db1, fpath);
-
-    if( dir == SQLITE_ROW ){
-    	i++;
-    	log_msg("\nA Record Has Been Found In The Database!\n");
-    }else if( dir ==SQLITE_DONE ){
-    	log_msg("\nThere's No Such Directory on local or on Dropbox.\n");
-    	printf("\nError: No such directory. Please retry.\n");
-    	free(log_msg);
-    	return err;
-    }
-
-    // If the file is not on local, Download it from Dropbox
-    if( dir->is_local == 0){
-    	log_msg("\nThe File Is Currently Not On Local Disks!\n");
-    	log_msg("\nbb_open(path\"%s\", fi=0x%08x)\n",
-	    path, fi);
+    //local full path
+    char fpath[PATH_MAX];
     bb_fullpath(fpath, path);
-    FILE *file = fopen(fpath, "w"); // Write it in this file
-        output = NULL;
-        err = drbGetFile(cli, &output,
-                         DRBOPT_PATH, fpath,
-                         DRBOPT_IO_DATA, file,
-                         DRBOPT_IO_FUNC, fwrite,
-                         DRBOPT_END);
-        fclose(file);
-        log_msg("\nThe File Has Been Downloaded! Checking For Error...\n");
 
-        if (err != DRBERR_OK) {
-            printf("Get File error (%d): %s\n", err, (char*)output);
-            free(output);
-        } else {
-        	//Get result as well as update isLocal value in the database table
-            update_isLocal(db1, fpath);
-            log_msg("\nis_local Has Been Successfully Updated!\n");
-            displayMetadata(output, "Get File Result");
-            drbDestroyMetadata(output, true);
-            log_msg("\nThe File Has Been Downloaded Successfully! \n");
+    //Search to see if the directory is already in the database
+    int err_trans = begin_transaction(BB_DATA->sqlite_conn);
 
-        }
+    if (err_trans != 0){
+    	retstat = EBUSY;
+	}
+
+    if (retstat == 0)
+    {
+		log_msg("bb_open: Begin transaction function has been called!\n");
+		dir = search_directory(BB_DATA->sqlite_conn, path_in_sqlite);
+
+		if (dir == NULL) {
+			retstat = -ENOENT;
+		}
     }
-    // If the file is local, just open it.
-    // If the file is not local, after download it onto local storage
-    // Open the file.
-    fd = open(fpath, fi->flags);
 
-    if (fd < 0)
-	retstat = bb_error("bb_open open");
+	if (retstat == 0) {
+		log_msg("bb_open: A Record Has Been Found In The Database!\n");
 
-    fi->fh = fd;
-    log_fi(fi);
-    log_msg("\nOpen File!\n");
+		// If the file is not on local, Download it from Dropbox
+		if(dir->is_local == 0){
+			log_msg("bb_open: Downloading file.\n");
 
-    // Get timestamp when the file was open
-    update_atime(fpath);
-    log_msg("\natime Has Been Updated!\n");
-    commit_transaction(db1);
-    log_msg("\Database Transaction Has Successfully Complete!\n");
-    free_directory(dir);
+			drbMetadata* metadata;
+			int err_dbx = download_dbx_file(BB_DATA->client, &metadata, path, fpath);
+
+			if (err_dbx != 0){
+				retstat = -EIO;
+			}
+		}
+	}
+
+	if (retstat == 0){
+		log_msg("bb_open: update_isLocal\n");
+		int err_sqlite = update_isLocal(BB_DATA->sqlite_conn, path_in_sqlite);
+		if (err_sqlite != 0){
+			retstat = -EIO;
+		}
+	}
+
+	if (retstat == 0){
+		fd = open(fpath, fi->flags);
+		if (fd < 0)
+			retstat = bb_error("bb_open\n");
+		else{
+			log_msg("bb_open: file is opened.\n");
+			fi->fh = fd;
+		}
+	}
+
+	//TODO update atime, is_locked, in_use_count
+
+	//Complete transaction
+	if (err_trans == 0){
+		if (retstat == 0){
+			commit_transaction(BB_DATA->sqlite_conn);
+		} else {
+			rollback_transaction(BB_DATA->sqlite_conn);
+		}
+	}
+
+	free_directory(dir);
+
+	log_msg("bb_open: Completed\n");
+
     return retstat;
 
 }
@@ -578,22 +580,16 @@ int bb_open(const char *path, struct fuse_file_info *fi)
 // returned by read.
 int bb_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi)
 {
+	log_msg("\nbb_read: [%s]\n", path);
     int retstat = 0;
-    char fpath[PATH_MAX];
-    bb_fullpath(fpath, path);
-
-    log_msg("\nbb_read(path=\"%s\", buf=0x%08x, size=%d, offset=%lld, fi=0x%08x)\n",
-	    path, buf, size, offset, fi);
-    // no need to get fpath on this one, since I work from fi->fh not the path
-    log_fi(fi);
 
     retstat = pread(fi->fh, buf, size, offset);
     if (retstat < 0)
-	retstat = bb_error("bb_read read");
+    	retstat = bb_error("bb_read read");
 
-    // Get timestamp when the file was open
-    update_atime(fpath);
-
+    //TODO update atime
+    //update_atime(fpath);
+    log_msg("bb_read: Completed\n");
     return retstat;
 }
 
@@ -719,16 +715,17 @@ int bb_flush(const char *path, struct fuse_file_info *fi)
  */
 int bb_release(const char *path, struct fuse_file_info *fi)
 {
+	log_msg("\nbb_release: [%s]\n", path);
     int retstat = 0;
-
-    log_msg("\nbb_release(path=\"%s\", fi=0x%08x)\n",
-	  path, fi);
-    log_fi(fi);
 
     // We need to close the file.  Had we allocated any resources
     // (buffers etc) we'd need to free them here as well.
     retstat = close(fi->fh);
+    if (retstat < 0)
+       	retstat = bb_error("bb_release close");
 
+    //TODO update in_use_count
+    log_msg("bb_release: Completed\n");
     return retstat;
 }
 
@@ -1032,13 +1029,13 @@ int ibc_opendir(const char *path, struct fuse_file_info *fi)
 	if (dir == NULL){
 		free(parent_path);
 		free(parent_path_in_sqlite);
-		return ENOENT;
+		return -ENOENT;
 	}
 
 	if (dir->type != 1){
 		free(parent_path);
 		free(parent_path_in_sqlite);
-		return ENOTDIR;
+		return -ENOTDIR;
 	}
 
 	//Get local full path
@@ -1064,27 +1061,28 @@ int ibc_opendir(const char *path, struct fuse_file_info *fi)
 				if (*(metadata->isDir)){
 					//Begin transaction
 					int err_trans = begin_transaction(BB_DATA->sqlite_conn);
+					if (err_trans != 0){
+						ret = -EBUSY;
+					} else {
+						//Set is_local to 1 for parent folder
+						update_isLocal(BB_DATA->sqlite_conn, path_in_sqlite);
 
-					//Set is_local to 1 for parent folder
-					update_isLocal(BB_DATA->sqlite_conn, path_in_sqlite);
+						//Save metadata into sqlite for sub file/folders
+						drbMetadataList* list = metadata->contents;
+						int list_size = list->size;
+						for (int i = 0; i < list_size; ++i){
+							drbMetadata* sub_metadata = list->array[i];
+							directory* sub_dir = directory_from_dbx(sub_metadata);
+							err_sqlite = insert_directory(BB_DATA->sqlite_conn, sub_dir);
+							free_directory(sub_dir);
 
-					//Save metadata into sqlite for sub file/folders
-					drbMetadataList* list = metadata->contents;
-					int list_size = list->size;
-					for (int i = 0; i < list_size; ++i){
-						drbMetadata* sub_metadata = list->array[i];
-						directory* sub_dir = directory_from_dbx(sub_metadata);
-						err_sqlite = insert_directory(BB_DATA->sqlite_conn, sub_dir);
-						free_directory(sub_dir);
-
-						if (err_sqlite != 0){
-							ret = EIO;
-							break;
+							if (err_sqlite != 0){
+								ret = -EIO;
+								break;
+							}
 						}
-					}
 
-					//Finish transaction
-					if (err_trans == 0){
+						//Finish transaction
 						if (err_sqlite == 0){
 							commit_transaction(BB_DATA->sqlite_conn);
 						}
@@ -1092,13 +1090,15 @@ int ibc_opendir(const char *path, struct fuse_file_info *fi)
 							rollback_transaction(BB_DATA->sqlite_conn);
 						}
 					}
+
+
 				} else {
-					ret = ENOENT;
+					ret = -ENOTDIR;
 				}
 				release_dbx_metadata(metadata);
 			} else {
 				log_msg("ibc_opendir - Failed to drbGetMetadata. Error Code: (%d).\n", err_dbx);
-				ret = EIO;
+				ret = -EIO;
 			}
 		}
 	}
@@ -1280,9 +1280,8 @@ int ibc_getattr(const char *path, struct stat *statbuf)
 		}
 		log_stat(statbuf);
 	} else {
-		ret = -ENOENT;
+		ret = -ENONET;
 	}
-
 
 	free_directory(dir);
 
@@ -1330,16 +1329,16 @@ struct fuse_operations bb_oper = {
 	  chmod = bb_chmod,
 	  chown = bb_chown,
 	  truncate = bb_truncate,
-	  utime = bb_utime,
-	  open = bb_open,
-	  read = bb_read,
-	  write = bb_write,*/
+	  utime = bb_utime,*/
+	  .open = bb_open,
+	  .read = bb_read,
+	  //write = bb_write,*/
 
 	  /** Just a placeholder, don't set */ // huh???
 	  /*statfs = bb_statfs,
-	  flush = bb_flush,
-	  release = bb_release,
-	  fsync = bb_fsync,*/
+	  flush = bb_flush,*/
+	  .release = bb_release,
+	  //fsync = bb_fsync,
 	/*
 	#ifdef HAVE_SYS_XATTR_H
 	  setxattr = bb_setxattr,
@@ -1398,10 +1397,10 @@ int main(int argc, char *argv[])
 	char *c_secret = "x2pfq4vkf5bytnq";  //< consumer secret
 
 	// User key and secret. Leave them NULL or set them with your AccessToken.
-	char *t_key    = "8pfo7r8fjml1xo6i"; // iihdh3t3dcld9svd < access token key
-	char *t_secret = "m4glqxs42dcop4i";  // 0fw3qvfrqo1dlxx < access token secret
-	//char *t_key    = "iihdh3t3dcld9svd"; //< access token key
-	//char *t_secret = "0fw3qvfrqo1dlxx";  //< access token secret
+	//char *t_key    = "8pfo7r8fjml1xo6i"; // iihdh3t3dcld9svd < access token key
+	//char *t_secret = "m4glqxs42dcop4i";  // 0fw3qvfrqo1dlxx < access token secret
+	char *t_key    = "iihdh3t3dcld9svd"; //< access token key
+	char *t_secret = "0fw3qvfrqo1dlxx";  //< access token secret
 
 	// Global initialisation
 	drbInit();
