@@ -230,12 +230,17 @@ directory** search_subdirectories(sqlite3* db, char* parent_path, int* count){
 	return datas;
 }
 
-int update_isLocal(sqlite3* db, char* full_path){
+int update_isLocal(sqlite3* db, char* full_path,int mode){
 
 	log_msg("\nupdate_isLocal: Begin\n");
 	sqlite3_stmt *stmt;
 	int rc;
-	char* sql = "UPDATE Directory SET is_local = 1 WHERE full_path = ?\0";
+	char* sql;
+	if(mode == 1){
+		sql = "UPDATE Directory SET is_local = 1 WHERE full_path = ?\0";
+		}else if(mode == 0){
+		sql = "UPDATE Directory SET is_local = 0 WHERE full_path = ?\0";
+	}
 	rc = sqlite3_prepare_v2(db, sql, -1, &stmt, 0);
 
 	if (rc == SQLITE_OK) {
