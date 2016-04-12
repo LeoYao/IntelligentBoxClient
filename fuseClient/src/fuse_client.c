@@ -23,18 +23,14 @@
 #include <time.h>
 
 #include <sqlite_utils.h>
-//#define HAVE_SYS_XATTR_H
 
 #include <dropbox_log_utils.h>
 #include <common_utils.h>
-
 
 #include <sqlite3.h>
 
 
 int is_log_to_file = 0;
-
-void test_sqlite_insert(sqlite3* db);
 
 // Report errors to logfile and give -errno to caller
 static int bb_error(char *str)
@@ -112,36 +108,118 @@ int bb_readlink(const char *path, char *link, size_t size)
 // shouldn't that comment be "if" there is no.... ?
 int bb_mknod(const char *path, mode_t mode, dev_t dev)
 {
-    int retstat = 0;
-    char fpath[PATH_MAX];
+	log_msg("\nbb_mknod(path=\"%s\", mode=0%3o, dev=%lld)\n", path, mode, dev);
 
-    log_msg("\nbb_mknod(path=\"%s\", mode=0%3o, dev=%lld)\n",
-	  path, mode, dev);
-    bb_fullpath(fpath, path);
+	//local full path
+	char fpath[PATH_MAX];
+	bb_fullpath(fpath, path);
 
-    // On Linux this could just be 'mknod(path, mode, rdev)' but this
-    //  is more portable
-    if (S_ISREG(mode)) {
-        retstat = open(fpath, O_CREAT | O_EXCL | O_WRONLY, mode);
-	if (retstat < 0)
-	    retstat = bb_error("bb_mknod open");
-        else {
-            retstat = close(retstat);
-	    if (retstat < 0)
-		retstat = bb_error("bb_mknod close");
-	}
-    } else
+	//If it is pipe, just create a pipe
 	if (S_ISFIFO(mode)) {
-	    retstat = mkfifo(fpath, mode);
-	    if (retstat < 0)
-		retstat = bb_error("bb_mknod mkfifo");
-	} else {
-	    retstat = mknod(fpath, mode, dev);
-	    if (retstat < 0)
-		retstat = bb_error("bb_mknod mknod");
+		log_msg("bb_mknod: mkfifo is called\n");
+		retstat = mkfifo(fpath, mode);
+		if (retstat < 0)
+			retstat = bb_error("bb_mknod mkfifo");
+		return retstat;
 	}
 
-    return retstat;
+	//Not a pipe, so create a file now
+	char* path_in_sqlite = path;
+	char* parent_path_in_sqlite = get_parent_path(path);
+	char* file_name = get_file_name(path);
+	if (strlen(path) == 1){
+		path_in_sqlite = "\0";
+		parent_path_in_sqlite = copy_text(".");
+	}
+
+	int err_sqlite = 0;
+	int retstat = 0;
+	int fd;
+	directory* dir;
+
+	//Search to see if the directory is already in the database
+	int err_trans = begin_transaction(BB_DATA->sqlite_conn);
+
+	if (err_trans != 0){
+		retstat = EBUSY;
+	}
+
+	if (retstat >= 0)
+	{
+		log_msg("bb_mknod: Begin transaction function has been called!\n");
+		dir = search_directory(BB_DATA->sqlite_conn, path_in_sqlite);
+
+		if (dir != NULL) {
+			if (dir->is_delete)
+				retstat = -EAGAIN;
+			else
+				retstat = -EEXIST;
+		}
+	}
+
+	if (retstat >= 0){
+		log_msg("bb_mknod: Creating a file\n");
+
+		long now = get_current_epoch_time();
+			dir = new_directory(
+					path_in_sqlite,
+					parent_path_in_sqlite,
+					file_name,
+					"",
+					2,
+					0,
+					now,
+					now,
+					0,
+					1,
+					1,
+					0,
+					0,
+					""
+					);
+
+		// On Linux this could just be 'mknod(path, mode, rdev)' but this
+		//  is more portable
+		if (S_ISREG(mode)) {
+			log_msg("bb_mknod: open is called\n");
+			retstat = open(fpath, O_CREAT | O_EXCL | O_WRONLY, mode);
+			if (retstat < 0)
+				retstat = bb_error("bb_mknod open");
+			else {
+				retstat = close(retstat);
+				if (retstat < 0)
+					retstat = bb_error("bb_mknod close");
+			}
+		} else {
+			log_msg("bb_mknod: mknod is called\n");
+			retstat = mknod(fpath, mode, dev);
+			if (retstat < 0)
+				retstat = bb_error("bb_mknod mknod");
+		}
+
+		if (retstat >= 0){
+			err_sqlite = insert_directory(BB_DATA->sqlite_conn, dir);
+			if (err_sqlite != 0){
+				retstat = -EIO;
+			}
+		}
+	}
+
+	//Complete transaction
+	if (err_trans == 0){
+		if (retstat >= 0){
+			commit_transaction(BB_DATA->sqlite_conn);
+		} else {
+			rollback_transaction(BB_DATA->sqlite_conn);
+		}
+	}
+
+	free_directory(dir);
+	free(parent_path_in_sqlite);
+	free(file_name);
+	log_msg("bb_open: Completed\n");
+
+	return retstat;
 }
 
 /** Create a directory */
@@ -912,93 +990,6 @@ int ibc_access(const char *path, int mask)
 	return 0;
 }
 
-/**
- * Create and open a file
- *
- * If the file does not exist, first create it with the specified
- * mode, and then open it.
- *
- * If this method is not implemented or under Linux kernel
- * versions earlier than 2.6.15, the mknod() and open() methods
- * will be called instead.
- *
- * Introduced in version 2.5
- */
-int bb_create(const char *path, mode_t mode, struct fuse_file_info *fi)
-{
-	int rc;
-	char *zErrMsg = 0;
-	int retstat = 0;
-    char fpath[PATH_MAX];
-    int fd;
-
-//    drbClient* cli = BB_DATA->client;
-    sqlite3* db1 = BB_DATA->sqlite_conn;
-
-    log_msg("\nbb_create(path=\"%s\", mode=0%03o, fi=0x%08x)\n",
-	    path, mode, fi);
-    bb_fullpath(fpath, path);
-
-    char* parent_path;
-    char* path2 = strdup(fpath);
-    parent_path = basename(path2);
-    //Create SQL for insert new file directory information into table Directory
-    char* sql1 = "INSERT INTO Directory WITH VALUES(";
-    char* sql2 = fpath;
-    char* sql3 = ", ";
-    char* sql4 = "2, 0, 0, 0, 1, 1, 1, 0, 1, 0);";
-    char* sql_create_file_dir ="";
-//    		(char*)malloc(5+strlen(sql1)+strlen(sql2)+strlen(sql4)+strlen(parent_path));
-    sql_create_file_dir = strncpy(sql_create_file_dir, sql1, strlen(sql1)+1);
-    sql_create_file_dir = strncpy(sql_create_file_dir, sql2, strlen(sql2+1));
-    sql_create_file_dir = strncpy(sql_create_file_dir, sql3, strlen(sql3)+1);
-    sql_create_file_dir = strncpy(sql_create_file_dir, parent_path, strlen(parent_path)+1);
-    sql_create_file_dir = strncpy(sql_create_file_dir, sql3, strlen(sql3)+1);
-    sql_create_file_dir = strncpy(sql_create_file_dir, sql4, strlen(sql4)+1);
-
-    char* sql_begin = "BEGIN TRANSACTION";
-
-
-    fd = creat(fpath, mode);
-    if (fd < 0)
-	retstat = bb_error("bb_create creat");
-
-    fi->fh = fd;
-
-    log_fi(fi);
-
-    //Begin transaction to database
-    rc = sqlite3_exec(db1, sql_begin, 0, 0, &zErrMsg);
-    //If SQLITE is busy, retry twice, if still busy then abort
-    for(int i=0;i<2;i++){
-    	if(rc == SQLITE_BUSY){
-    		delay(50);
-    		rc = sqlite3_exec(db1, sql_begin, 0, 0, &zErrMsg);
-    	}else{
-    		break;
-    	}
-    }
-
-    // Insert into database table
-    rc = sqlite3_exec(db1, sql_create_file_dir, 0, 0, &zErrMsg);
-    if(rc != SQLITE_OK){
- 	   fprintf(stderr, "SQL error: %s\n", zErrMsg);
- 	   sqlite3_free(zErrMsg);
-    }
-
-//    update_atime(fpath);
-//    update_mtime(fpath);
-
-    rc = sqlite3_exec(db1, "COMMIT", 0, 0, &zErrMsg);
-    if(rc != SQLITE_OK){
-  	   fprintf(stderr, "SQL error: %s\n", zErrMsg);
-  	   sqlite3_free(zErrMsg);
-     }
-
-    return retstat;
-}
-
-
 /** Open directory
  *
  * This method should check if the open operation is permitted for
@@ -1314,8 +1305,8 @@ struct fuse_operations bb_oper = {
 	  //readlink = bb_readlink,
 
 	  // no .getdir -- that's deprecated
-	  /*getdir = NULL,
-	  mknod = bb_mknod,*/
+	  //*getdir = NULL,
+	  .mknod = bb_mknod,
 	  .mkdir = ibc_mkdir,
 	  .unlink = ibc_unlink,
 	  .rmdir = ibc_rmdir,
@@ -1343,7 +1334,6 @@ struct fuse_operations bb_oper = {
 	  .init = ibc_init,
 	  .destroy = ibc_destroy,
 	  .access = ibc_access,
-	  .create = bb_create,
 	  .ftruncate = bb_ftruncate,
 	  .fgetattr = ibc_fgetattr
 };
@@ -1460,88 +1450,3 @@ int main(int argc, char *argv[])
     return fuse_stat;
 }
 
-void test_sqlite_insert(sqlite3* db){
-
-	directory* data = new_directory(
-			"a",
-			"b",
-			"c",
-			"d",
-			1,
-			2,
-			3,
-			4,
-			0,
-			0,
-			0,
-			0,
-			5,
-			"e"
-			);
-	insert_directory(db, data);
-	free_directory(data);
-
-	char* fpathtest = "a";
-	update_isLocal(db, fpathtest, 1);
-	directory* dir = search_directory(db, "a");
-
-	if (dir != NULL){
-		log_msg("\nSuccessfully get all the metadata of file %s\n", dir->full_path);
-		log_msg("Successfully get all the metadata of file %s\n", dir->entry_name);
-		log_msg("Successfully get all the metadata of file %lld\n", dir->mtime);
-		log_msg("Successfully get all the metadata of file %d\n", dir->is_local);
-	}
-	free_directory(dir); //Dont' forget to release memory to avoid memory leak
-
-
-	//Insert another record with the same parent folder
-	data = new_directory(
-					"a2",
-					"b",
-					"c",
-					"d",
-					1,
-					2,
-					3,
-					4,
-					0,
-					0,
-					0,
-					0,
-					5,
-					"e"
-					);
-	insert_directory(db, data);
-	free_directory(data); //Dont' forget to release memory to avoid memory leak
-
-	 data = new_directory(
-	    			"",
-	    			".",
-	    			"",
-	    			"",
-	    			2,
-	    			0,
-	    			0,
-	    			0,
-	    			0,
-	    			0,
-	    			0,
-	    			0,
-	    			0,
-	    			""
-	    			);
-	    	insert_directory(db, data);
-	    	free_directory(data);
-
-
-	//Query all sub files/folder under a same parent folder
-	int rs_cnt = 0;
-	directory** dirs = search_subdirectories(db, "b", &rs_cnt);
-	if (dirs != NULL){
-		log_msg("\n");
-		for (int i = 0; i < rs_cnt; ++i)
-		log_msg("Successfully get all the metadata of file %s\n", dirs[i]->full_path);
-	}
-	free_directories(dirs, rs_cnt); //Dont' forget to release memory to avoid memory leak
-
-}
