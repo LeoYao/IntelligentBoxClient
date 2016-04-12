@@ -144,7 +144,7 @@ directory* populate_directory(sqlite3_stmt *stmt){
 	return data;
 }
 
-directory* search_directory(sqlite3* db, char* full_path){
+directory* search_directory(sqlite3* db, const char* full_path){
 
 	log_msg("\nsearch_metadata: Begin\n");
 	directory* data = NULL;
@@ -180,7 +180,7 @@ directory* search_directory(sqlite3* db, char* full_path){
 	return data;
 }
 
-directory** search_subdirectories(sqlite3* db, char* parent_path, int* count){
+directory** search_subdirectories(sqlite3* db, const char* parent_path, int* count){
 
 	log_msg("\nsearch_subdirectories: Begin\n");
 
@@ -878,14 +878,14 @@ lru_entry* pop_lru(sqlite3* db, int create_transaction){
 		log_msg("pop_lru: update head->next\n");
 		free(head->next);
 		head->next = copy_text(result->next);
-		rc = update_lru(head);
+		rc = update_lru(BB_DATA->sqlite_conn, head);
 	}
 
 	if (rc == SQLITE_OK){
 		log_msg("pop_lru: update next->prev\n");
 		free(next->prev);
 		next->prev = copy_text(result->prev);
-		rc = update_lru(next);
+		rc = update_lru(BB_DATA->sqlite_conn, next);
 	}
 
 	if (rc == SQLITE_OK){
@@ -936,15 +936,15 @@ int push_lru(sqlite3* db, const char* path, int create_transaction){
 		curr = select_lru(db, path);
 		if (curr == NULL){
 			log_msg("push_lru: create curr [%s]\n", path);
-			curr = (lru_entry*)malloc(lru_entry);
+			curr = (lru_entry*)malloc(sizeof(lru_entry));
 			curr->curr = copy_txt(path);
 			rc = insert_lru(db, curr);
 		} else {
 			log_msg("push_lru: find prev [%s]\n", curr->prev);
-            prev = select_lru(curr->prev);
+            prev = select_lru(BB_DATA->sqlite_conn, curr->prev);
 
             log_msg("push_lru: find next [%s]\n", curr->next);
-            next = select_lru(curr->next);
+            next = select_lru(BB_DATA->sqlite_conn, curr->next);
 
             if (prev == NULL || next == NULL){
             	log_msg("push_lru: Failed to find prev or next\n");
@@ -980,22 +980,22 @@ int push_lru(sqlite3* db, const char* path, int create_transaction){
 	}
 
 	if (rc == SQLITE_OK){
-		log_msg("push_lru: update result->next and result->prev\n");
-		free(result->next);
-		result->next = copy_text(TAIL);
-		free(result->prev);
-		result->prev = copy_text(tail_prev->curr);
-		rc += update_lru(db, result);
+		log_msg("push_lru: update curr->next and curr->prev\n");
+		free(curr->next);
+		curr->next = copy_text(TAIL);
+		free(curr->prev);
+		curr->prev = copy_text(tail_prev->curr);
+		rc += update_lru(db, curr);
 
 		log_msg("push_lru: update tail->prev)\n");
 		free(tail->prev);
-		tail->prev = copy_text(result->curr);
+		tail->prev = copy_text(curr->curr);
 		rc += update_lru(db, tail);
 
 		log_msg("push_lru: update tail_prev->next\n");
 		free(tail_prev->next);
-		tail_prev->next = copy_text(result->curr);
-		rc += update_lru(db, prevTail);
+		tail_prev->next = copy_text(curr->curr);
+		rc += update_lru(db, tail_prev);
 	}
 
 	if (in_transaction){
@@ -1071,7 +1071,7 @@ int remove_lru(sqlite3* db, const char* path, int create_transaction){
 
 		if (rc == SQLITE_OK){
 			log_msg("push_lru: delete to_remove\n");
-			rc = delete_lru(to_remove->curr);
+			rc = delete_lru(BB_DATA->sqlite_conn, to_remove->curr);
 		}
 	}
 

@@ -44,7 +44,7 @@ int compare_string(const char* s1, const char* s2){
 		}
 	}
 
-	if (strlen(s1)) == strlen(s2) && strncmp(s1, s2, strnlen(s1)){
+	if (strlen(s1) == strlen(s2) && strncmp(s1, s2, strlen(s1))) {
 		return 0;
 	} else {
 		return -1;

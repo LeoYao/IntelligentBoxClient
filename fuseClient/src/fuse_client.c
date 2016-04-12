@@ -78,6 +78,7 @@ int bb_mknod(const char *path, mode_t mode, dev_t dev)
 {
 	log_msg("\nbb_mknod(path=\"%s\", mode=0%3o, dev=%lld)\n", path, mode, dev);
 
+	int retstat = 0;
 	//local full path
 	char fpath[PATH_MAX];
 	bb_fullpath(fpath, path);
@@ -407,6 +408,7 @@ int ibc_rmdir(const char *path)
 	}
 
     int err_sqlite = 0;
+    int subdir_cnt = 0;
 
     directory* dir = NULL;
 
@@ -439,7 +441,7 @@ int ibc_rmdir(const char *path)
 				retstat = -EIO;
 			}
 		}else{
-			int subdir_cnt = 0;
+
 			directory** subdirs = search_subdirectories(BB_DATA->sqlite_conn, path_in_sqlite, &subdir_cnt);
 			if (subdirs != NULL){
 				retstat = -ENOTEMPTY;
@@ -504,6 +506,7 @@ int bb_truncate(const char *path, off_t newsize)
 {
 	log_msg("\nbb_truncate(path=\"%s\", newsize=%lld)\n", path, newsize);
     int retstat = 0;
+    int err_sqlite;
     char* path_in_sqlite = path;
 	if (strlen(path) == 1){
 		path_in_sqlite = "\0";
@@ -517,7 +520,7 @@ int bb_truncate(const char *path, off_t newsize)
 
 	if (retstat >= 0){
 		log_msg("bb_truncate: update_size [%s], size [%lld]\n", path_in_sqlite, newsize);
-		int err_sqlite = update_size(BB_DATA->sqlite_conn, path_in_sqlite, newsize);
+		err_sqlite = update_size(BB_DATA->sqlite_conn, path_in_sqlite, newsize);
 		if (err_sqlite != SQLITE_OK){
 			retstat = -EIO;
 		}
@@ -559,6 +562,7 @@ int bb_utime(const char *path, struct utimbuf *ubuf)
 {
 	log_msg("\nbb_utime(path=\"%s\", ubuf=0x%08x)\n",path, ubuf);
     int retstat = 0;
+    int err_sqlite;
     char* path_in_sqlite = path;
 	if (strlen(path) == 1){
 		path_in_sqlite = "\0";
@@ -573,7 +577,7 @@ int bb_utime(const char *path, struct utimbuf *ubuf)
 	}
 
 	if (retstat >= 0){
-		int err_sqlite = 0;
+		err_sqlite = 0;
 		log_msg("bb_utime: update atime [%s], time[%ld]\n", path_in_sqlite, time);
 		err_sqlite += update_time(BB_DATA->sqlite_conn, path_in_sqlite, 1, time);
 
@@ -1313,11 +1317,11 @@ int ibc_releasedir(const char *path, struct fuse_file_info *fi)
  */
 int bb_ftruncate(const char *path, off_t offset, struct fuse_file_info *fi)
 {
-    log_msg("\nbb_ftruncate(path=\"%s\", offset=%lld, fi=0x%08x)\n",
+    log_msg("\nbb_ftruncate(path=\"%s\", offset=%lld, fi=0x%08x)\n", path, offset, fi);
 	int retstat = 0;
 	char fpath[PATH_MAX];
 	bb_fullpath(fpath, path);
-
+	int err_sqlite;
 	log_msg("bb_ftruncate: begin_transaction\n");
 	int err_trans = begin_transaction(BB_DATA->sqlite_conn);
 	if (err_trans != 0){
@@ -1326,9 +1330,9 @@ int bb_ftruncate(const char *path, off_t offset, struct fuse_file_info *fi)
 
 	if (retstat >= 0){
 		log_msg(nbb_ftruncate: update_size\n");
-		int err_sqlite = update_size(BB_DATA->sqlite_conn, fpath, newsize);
+		err_sqlite = update_size(BB_DATA->sqlite_conn, fpath, newsize);
 		if (err_sqlite != SQLITE_OK){
-			retstat - -EIO;
+			retstat = -EIO;
 		}
 	}
 
