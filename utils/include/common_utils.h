@@ -17,6 +17,7 @@
 #define EXPAND_OK 0
 
 void delay(unsigned int mseconds);
+int compare_string(const char* s1, const char* s2);
 char* concat_string(int n, ...);
 int getLastSlashPosition(const char* path);
 int expand_mem(void** ptr, int size);

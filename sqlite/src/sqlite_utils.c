@@ -766,11 +766,52 @@ int update_lru(sqlite3* db, lru_entry* lru){
 lru_entry* pop_lru(sqlite3* db, int create_transaction){
 	int in_transaction = 0;
 	int rc = 0;
+	lru_entry* result = NULL;
+	lru_entry* head;
+	lru_entry* next;
+
 	if (create_transaction){
 		rc = begin_transaction(db);
 		if (rc == SQLITE_OK){
 			in_transaction = 1;
 		}
+	}
+
+	if (rc == SQLITE_OK){
+		head = select_lru(db, HEAD);
+		if (head == NULL || (compare_string(head->next, TAIL))){
+			rc = -1;
+		}
+	}
+
+	if (rc == SQLITE_OK){
+		result = select_lru(db, head->next);
+		if (result == NULL){
+			rc = 1;
+		}
+	}
+
+	if (rc == SQLITE_OK){
+		next = select_lru(db, head->next);
+		if (next == NULL){
+			rc = 1;
+		}
+	}
+
+	if (rc == SQLITE_OK){
+		free(head->next);
+		head->next = copy_txt(result->next);
+		rc = update_lru(head);
+	}
+
+	if (rc == SQLITE_OK){
+		free(next->prev);
+		next->prev = copy_txt(result->prev);
+		rc = update_lru(next);
+	}
+
+	if (rc == SQLITE_OK){
+		delete_lru(db, result->curr);
 	}
 
 	if (in_transaction){
@@ -779,7 +820,11 @@ lru_entry* pop_lru(sqlite3* db, int create_transaction){
 		} else {
 			rc = rollback_transaction(db);
 		}
-
 	}
+
+	free_lru(head);
+	free_lru(next);
+
+	return result;
 }
 

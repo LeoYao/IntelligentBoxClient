@@ -34,7 +34,22 @@ int getLastSlashPosition(const char* path)
 	return 1;
 }
 
+int compare_string(const char* s1, const char* s2){
 
+	if (s1 == NULL || s2 == NULL) {
+		if (s1 == NULL && s2 == NULL){
+			return 0;
+		} else {
+			return -1;
+		}
+	}
+
+	if (strlen(s1)) == strlen(s2) && strncmp(s1, s2, strnlen(s1)){
+		return 0;
+	} else {
+		return -1;
+	}
+}
 char* concat_string(const int n, ...){
 
 	va_list ap;
