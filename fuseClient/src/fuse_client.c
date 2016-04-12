@@ -25,10 +25,6 @@
 #include <sqlite_utils.h>
 //#define HAVE_SYS_XATTR_H
 
-#ifdef HAVE_SYS_XATTR_H
-#include <sys/xattr.h>
-#endif
-
 #include <dropbox_log_utils.h>
 #include <common_utils.h>
 
@@ -202,7 +198,7 @@ int ibc_mkdir(const char *path, mode_t mode)
     		}
     	}
      else {
-    	retstat = -ENOENT;
+    	retstat = ENOENT;
     }
     }
     return retstat;
@@ -213,6 +209,7 @@ int ibc_unlink(const char *path)
 {
     int retstat = 0;
     char fpath[PATH_MAX];
+
     char* path_in_sqlite = path;
     sqlite3* db1 = BB_DATA->sqlite_conn;
     int err_dbx = DRBERR_OK;
@@ -220,6 +217,7 @@ int ibc_unlink(const char *path)
     directory* dir;
     long time = get_current_epoch_time();
 
+    //Begin transaction
     int err_trans = begin_transaction(BB_DATA->sqlite_conn);
     dir = search_directory(db1, path_in_sqlite);
     if(dir->is_local == 0){
@@ -227,34 +225,33 @@ int ibc_unlink(const char *path)
     	err_sqlite = update_time(db1, path_in_sqlite, 1, time);
     	err_sqlite = update_time(db1, path_in_sqlite, 0, time);
     }else{
-    log_msg("\nibc_unlink(path=\"%s\")\n",
-	    path);
-    bb_fullpath(fpath, path);
-    retstat = unlink(fpath);
+    	log_msg("\nibc_unlink(path=\"%s\")\n",path);
+    	bb_fullpath(fpath, path);
+    	retstat = unlink(fpath);
+    	if (retstat < 0){
+    		retstat = bb_error("ibc_unlink unlink");
 
-    if (retstat < 0)
-	retstat = bb_error("ibc_unlink unlink");
-    //Begin transaction
-    err_sqlite = update_isLocal(db1, path_in_sqlite, 0);
-    err_sqlite = update_isDeleted(db1, path_in_sqlite);
-    err_sqlite = update_time(db1, path_in_sqlite, 1, time);
-    err_sqlite = update_time(db1, path_in_sqlite, 0, time);
-    }
-	//Finish transaction
-	if (err_trans == 0){
-		if (err_sqlite == 0){
-			commit_transaction(BB_DATA->sqlite_conn);
-		    log_msg("\nUpdate Database Table After rm File!\n");
+			err_sqlite = update_isLocal(db1, path_in_sqlite, 0);
+			err_sqlite = update_isDeleted(db1, path_in_sqlite);
+			err_sqlite = update_time(db1, path_in_sqlite, 1, time);
+			err_sqlite = update_time(db1, path_in_sqlite, 0, time);
 		}
-		else{
-			rollback_transaction(BB_DATA->sqlite_conn);
-		    log_msg("\nRollback Database Table After rm File!\n");
+		//Finish transaction
+		if (err_trans == 0){
+			if (err_sqlite == 0){
+				commit_transaction(BB_DATA->sqlite_conn);
+				log_msg("\nUpdate Database Table After rm File!\n");
+			}
+			else{
+				rollback_transaction(BB_DATA->sqlite_conn);
+				log_msg("\nRollback Database Table After rm File!\n");
+			}
+		}
+		else
+		{
+			retstat = -ENOENT;
 		}
 	}
-	else {
-		retstat = -ENOENT;
-		}
-
     return retstat;
 }
 
@@ -267,13 +264,13 @@ int ibc_rmdir(const char *path)
     char* path_in_sqlite = path;
     int err_dbx = DRBERR_OK;
     int err_sqlite = 0;
+
     directory* dir;
     long time = get_current_epoch_time();
 
-
-    log_msg("\nibc_rmdir(path=\"%s\")\n",
-	    path);
+    log_msg("\nibc_rmdir(path=\"%s\")\n", path);
     bb_fullpath(fpath, path);
+
     int err_trans = begin_transaction(BB_DATA->sqlite_conn);
     dir = search_directory(db1, path_in_sqlite);
     if(dir->is_local == 0){
@@ -282,17 +279,15 @@ int ibc_rmdir(const char *path)
         err_sqlite = update_time(db1, path_in_sqlite, 0, time);
 
     }else{
-    retstat = rmdir(fpath);
-    if (retstat < 0)
-	retstat = bb_error("ibc_rmdir rmdir");
+		retstat = rmdir(fpath);
+		if (retstat < 0)
+			retstat = bb_error("ibc_rmdir rmdir");
 
-   //Update the database table to set is_deleted to 1
-    //Begin transaction
-
-    err_sqlite = update_isDeleted(db1, path_in_sqlite);
-    err_sqlite = update_isLocal(db1, path_in_sqlite, 0);
-    err_sqlite = update_time(db1, path_in_sqlite, 1, time);
-    err_sqlite = update_time(db1, path_in_sqlite, 0, time);
+	   //Update the database table to set is_deleted to 1
+		err_sqlite = update_isDeleted(db1, path_in_sqlite);
+		err_sqlite = update_isLocal(db1, path_in_sqlite, 0);
+		err_sqlite = update_time(db1, path_in_sqlite, 1, time);
+		err_sqlite = update_time(db1, path_in_sqlite, 0, time);
     }
 	//Finish transaction
 	if (err_trans == 0){
@@ -408,17 +403,19 @@ int bb_chown(const char *path, uid_t uid, gid_t gid)
 /** Change the size of a file */
 int bb_truncate(const char *path, off_t newsize)
 {
+	log_msg("\nbb_truncate: [%s]\n", path);
     int retstat = 0;
     char fpath[PATH_MAX];
-
-    log_msg("\nbb_truncate(path=\"%s\", newsize=%lld)\n",
-	    path, newsize);
     bb_fullpath(fpath, path);
 
+    log_msg("bb_truncate: truncate\n");
     retstat = truncate(fpath, newsize);
     if (retstat < 0)
-	bb_error("bb_truncate truncate");
+    	retstat = bb_error("bb_truncate truncate");
 
+    //TODO: update size
+
+    log_msg("bb_truncate: Completed\n");
     return retstat;
 }
 
@@ -479,7 +476,7 @@ int bb_open(const char *path, struct fuse_file_info *fi)
     	retstat = EBUSY;
 	}
 
-    if (retstat == 0)
+    if (retstat >= 0)
     {
 		log_msg("bb_open: Begin transaction function has been called!\n");
 		dir = search_directory(BB_DATA->sqlite_conn, path_in_sqlite);
@@ -489,7 +486,7 @@ int bb_open(const char *path, struct fuse_file_info *fi)
 		}
     }
 
-	if (retstat == 0) {
+	if (retstat >= 0) {
 		log_msg("bb_open: A Record Has Been Found In The Database!\n");
 
 		// If the file is not on local, Download it from Dropbox
@@ -505,7 +502,7 @@ int bb_open(const char *path, struct fuse_file_info *fi)
 		}
 	}
 
-	if (retstat == 0){
+	if (retstat >= 0){
 		log_msg("bb_open: update_isLocal\n");
 		int err_sqlite = update_isLocal(BB_DATA->sqlite_conn, path_in_sqlite, 1);
 		if (err_sqlite != 0){
@@ -513,7 +510,7 @@ int bb_open(const char *path, struct fuse_file_info *fi)
 		}
 	}
 
-	if (retstat == 0){
+	if (retstat >= 0){
 		fd = open(fpath, fi->flags);
 		if (fd < 0)
 			retstat = bb_error("bb_open\n");
@@ -527,7 +524,7 @@ int bb_open(const char *path, struct fuse_file_info *fi)
 
 	//Complete transaction
 	if (err_trans == 0){
-		if (retstat == 0){
+		if (retstat >= 0){
 			commit_transaction(BB_DATA->sqlite_conn);
 		} else {
 			rollback_transaction(BB_DATA->sqlite_conn);
@@ -563,12 +560,19 @@ int bb_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_
 	log_msg("\nbb_read: [%s]\n", path);
     int retstat = 0;
 
+    char* path_in_sqlite = path;
+	if (strlen(path) == 1){
+		path_in_sqlite = "\0";
+	}
+
     retstat = pread(fi->fh, buf, size, offset);
     if (retstat < 0)
     	retstat = bb_error("bb_read read");
 
     //TODO update atime
-    //update_atime(fpath);
+    //update_atime(path_in_sqlite);
+
+
     log_msg("bb_read: Completed\n");
     return retstat;
 }
@@ -586,36 +590,50 @@ int bb_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_
 int bb_write(const char *path, const char *buf, size_t size, off_t offset,
 	     struct fuse_file_info *fi)
 {
-		int rc;
-		char *zErrMsg = 0;
-		char fpath[PATH_MAX];
+	log_msg("\nbb_write: [%s]\n", path);
 
-//		drbClient* cli = BB_DATA->client;
-		sqlite3* db1 = BB_DATA->sqlite_conn;
+	char* path_in_sqlite = path;
+	if (strlen(path) == 1){
+		path_in_sqlite = "\0";
+	}
 
     int retstat = 0;
-    // Get full path to update the database
-    bb_fullpath(fpath, path);
+    int err_trans = 0;
 
-    log_msg("\nbb_write(path=\"%s\", buf=0x%08x, size=%d, offset=%lld, fi=0x%08x)\n",
-	    path, buf, size, offset, fi
-	    );
-    // no need to get fpath on this one, since I work from fi->fh not the path
-    log_fi(fi);
+    log_msg("bb_write: begin_transaction\n");
+    err_trans = begin_transaction(BB_DATA->sqlite_conn);
+    if (err_trans != 0){
+    	retstat = -EBUSY;
+    }
 
-    retstat = pwrite(fi->fh, buf, size, offset);
-    if (retstat < 0)
-	retstat = bb_error("bb_write pwrite");
+    if (retstat >= 0){
+    	log_msg("bb_write: pwrite\n");
+    	retstat = pwrite(fi->fh, buf, size, offset);
+    	if (retstat < 0)
+    		bb_error("bb_write pwrite");
+    }
 
-    // Get timestamp when the file was open
-    begin_transaction(db1);
-    update_isModified(db1, fpath);
-    //update_atime(fpath);
-    //update_mtime(fpath);
-    commit_transaction(db1);
+    if (retstat >= 0){
+    	log_msg("bb_write: update_isModified\n");
+    	int err_sqlite = update_isModified(BB_DATA->sqlite_conn, path_in_sqlite);
+    	if (err_sqlite != 0){
+    		retstat = -EIO;
+    	}
+    }
 
-//    free(sql_update_is_modified);
+    //TODO update mtime, atime
 
+    if (err_trans == 0){
+    	if (retstat >= 0){
+    		log_msg("bb_write: commit_transaction\n");
+    		commit_transaction(BB_DATA->sqlite_conn);
+    	} else {
+    		log_msg("bb_write: rollback_transaction\n");
+    		rollback_transaction(BB_DATA->sqlite_conn);
+    	}
+    }
+
+    log_msg("bb_write: Completed\n");
     return retstat;
 }
 
@@ -673,8 +691,10 @@ int bb_flush(const char *path, struct fuse_file_info *fi)
     int retstat = 0;
 
     log_msg("\nbb_flush(path=\"%s\", fi=0x%08x)\n", path, fi);
-    // no need to get fpath on this one, since I work from fi->fh not the path
-    log_fi(fi);
+
+    retstat = fsync(fi->fh);
+	if (retstat < 0)
+		retstat = bb_error("bb_flush fsync");
 
     return retstat;
 }
@@ -722,99 +742,14 @@ int bb_fsync(const char *path, int datasync, struct fuse_file_info *fi)
 
     log_msg("\nbb_fsync(path=\"%s\", datasync=%d, fi=0x%08x)\n",
 	    path, datasync, fi);
-    log_fi(fi);
 
-    // some unix-like systems (notably freebsd) don't have a datasync call
-#ifdef HAVE_FDATASYNC
-    if (datasync)
-	retstat = fdatasync(fi->fh);
-    else
-#endif
 	retstat = fsync(fi->fh);
 
     if (retstat < 0)
-	bb_error("bb_fsync fsync");
+    	retstat = bb_error("bb_fsync fsync");
 
     return retstat;
 }
-
-#ifdef HAVE_SYS_XATTR_H
-/** Set extended attributes */
-int bb_setxattr(const char *path, const char *name, const char *value, size_t size, int flags)
-{
-    int retstat = 0;
-    char fpath[PATH_MAX];
-
-    log_msg("\nbb_setxattr(path=\"%s\", name=\"%s\", value=\"%s\", size=%d, flags=0x%08x)\n",
-	    path, name, value, size, flags);
-    bb_fullpath(fpath, path);
-
-    retstat = lsetxattr(fpath, name, value, size, flags);
-    if (retstat < 0)
-	retstat = bb_error("bb_setxattr lsetxattr");
-
-    return retstat;
-}
-
-/** Get extended attributes */
-int bb_getxattr(const char *path, const char *name, char *value, size_t size)
-{
-    int retstat = 0;
-    char fpath[PATH_MAX];
-
-    log_msg("\nbb_getxattr(path = \"%s\", name = \"%s\", value = 0x%08x, size = %d)\n",
-	    path, name, value, size);
-    bb_fullpath(fpath, path);
-
-    retstat = lgetxattr(fpath, name, value, size);
-    if (retstat < 0)
-	retstat = bb_error("bb_getxattr lgetxattr");
-    else
-	log_msg("    value = \"%s\"\n", value);
-
-    return retstat;
-}
-
-/** List extended attributes */
-int bb_listxattr(const char *path, char *list, size_t size)
-{
-    int retstat = 0;
-    char fpath[PATH_MAX];
-    char *ptr;
-
-    log_msg("bb_listxattr(path=\"%s\", list=0x%08x, size=%d)\n",
-	    path, list, size
-	    );
-    bb_fullpath(fpath, path);
-
-    retstat = llistxattr(fpath, list, size);
-    if (retstat < 0)
-	retstat = bb_error("bb_listxattr llistxattr");
-
-    log_msg("    returned attributes (length %d):\n", retstat);
-    for (ptr = list; ptr < list + retstat; ptr += strlen(ptr)+1)
-	log_msg("    \"%s\"\n", ptr);
-
-    return retstat;
-}
-
-/** Remove extended attributes */
-int bb_removexattr(const char *path, const char *name)
-{
-    int retstat = 0;
-    char fpath[PATH_MAX];
-
-    log_msg("\nbb_removexattr(path=\"%s\", name=\"%s\")\n",
-	    path, name);
-    bb_fullpath(fpath, path);
-
-    retstat = lremovexattr(fpath, name);
-    if (retstat < 0)
-	retstat = bb_error("bb_removexattr lrmovexattr");
-
-    return retstat;
-}
-#endif
 
 
 /** Synchronize directory contents
@@ -1184,6 +1119,8 @@ int bb_ftruncate(const char *path, off_t offset, struct fuse_file_info *fi)
     if (retstat < 0)
     	retstat = bb_error("bb_ftruncate ftruncate");
 
+    //TODO: update size
+
     return retstat;
 }
 
@@ -1299,7 +1236,6 @@ struct fuse_operations bb_oper = {
 	  /*getdir = NULL,
 	  mknod = bb_mknod,*/
 	  .mkdir = ibc_mkdir,
-
 	  .unlink = ibc_unlink,
 	  .rmdir = ibc_rmdir,
 	  /*
@@ -1307,26 +1243,18 @@ struct fuse_operations bb_oper = {
 	  rename = bb_rename,
 	  link = bb_link,
 	  chmod = bb_chmod,
-	  chown = bb_chown,
-	  truncate = bb_truncate,
-	  utime = bb_utime,*/
+	  chown = bb_chown,*/
+	  .truncate = bb_truncate,
+	  //utime = bb_utime,
 	  .open = bb_open,
 	  .read = bb_read,
-	  //write = bb_write,*/
+	  .write = bb_write,
 
 	  /** Just a placeholder, don't set */ // huh???
-	  /*statfs = bb_statfs,
-	  flush = bb_flush,*/
+	  /*statfs = bb_statfs,*/
+	  .flush = bb_flush,
 	  .release = bb_release,
-	  //fsync = bb_fsync,
-	/*
-	#ifdef HAVE_SYS_XATTR_H
-	  setxattr = bb_setxattr,
-	  getxattr = bb_getxattr,
-	  listxattr = bb_listxattr,
-	  removexattr = bb_removexattr,
-	#endif
-	*/
+	  .fsync = bb_fsync,
 	  .opendir = ibc_opendir,
 	  .readdir = ibc_readdir,
 	  .releasedir = ibc_releasedir,
@@ -1344,16 +1272,6 @@ void bb_usage()
     fprintf(stderr, "usage:  bbfs [FUSE and mount options] rootDir mountPoint\n");
     abort();
 }
-
-static int callback(void *NotUsed, int argc, char **argv, char **azColName){
-  int i;
-  for(i=0; i<argc; i++){
-    printf("%s = %s\n", azColName[i], argv[i] ? argv[i] : "NULL");
-  }
-  printf("-------------------------\n");
-  return 0;
-}
-
 
 int main(int argc, char *argv[])
 {
