@@ -403,6 +403,38 @@ int update_in_use_count(sqlite3* db, const char* full_path, int delta){
 	return rc;
 }
 
+int update_size(sqlite3* db, const char* full_path, int size){
+	log_msg("\nupdate_size: Begin [%s], size[%d]\n", full_path, size);
+	sqlite3_stmt *stmt;
+	int rc;
+	char* sql = "UPDATE Directory SET size = ? WHERE full_path = ?\0";
+	rc = sqlite3_prepare_v2(db, sql, -1, &stmt, 0);
+
+	if (rc == SQLITE_OK) {
+		log_msg("update_in_use_count: Statement is prepared: %s\n", sql);
+		rc += sqlite3_bind_int(stmt, 1, size);
+		rc += sqlite3_bind_text(stmt, 2, full_path, -1, SQLITE_TRANSIENT);
+		log_msg("update_in_use_count: Statement is binded.\n");
+	} else {
+		log_msg("update_in_use_count: Failed to prepare statement. Error message: %s\n", sqlite3_errmsg(db));
+	}
+
+	if (rc == SQLITE_OK){
+		rc = sqlite3_step(stmt);
+		if (rc == SQLITE_DONE){
+			log_msg("update_in_use_count: Successful\n");
+			rc = SQLITE_OK;
+		}else {
+			log_msg("update_in_use_count: An Error Has Occured! Error message: %s\n", sqlite3_errmsg(db));
+		}
+	}
+
+	sqlite3_finalize(stmt);
+
+	log_msg("update_in_use_count: Completed\n");
+	return rc;
+}
+
 int insert_directory(sqlite3* db, directory* data){
 
 	log_msg("\ninsert_directory: Begin [%s]\n", data->full_path);

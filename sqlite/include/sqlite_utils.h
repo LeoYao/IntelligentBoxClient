@@ -66,6 +66,7 @@ int update_isLocal(sqlite3* db, const char* full_path, int mode);
 int update_isDeleted(sqlite3* db, const char* full_path);
 int update_isModified(sqlite3* db, const char* full_path);
 int update_in_use_count(sqlite3* db, const char* full_path, int delta);
+int update_size(sqlite3* db, const char* full_path, int size);
 int insert_directory(sqlite3* db, directory* data);
 int clean_subdirectories(sqlite3* db, const char* parent_path);
 directory** search_subdirectories(sqlite3* db, const char* parent_path, int* count);
