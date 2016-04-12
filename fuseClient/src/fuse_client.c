@@ -55,7 +55,7 @@ static int bb_error(char *str)
 //  it.
 static void bb_fullpath(char fpath[PATH_MAX], const char *path)
 {
-    strcpy(fpath, BB_DATA->rootdir);
+    strcpy(fpath, BB_DATA->datadir);
     strncat(fpath, path, PATH_MAX); // ridiculously long paths will break here
 
     //log_msg("    bb_fullpath:  rootdir = \"%s\", path = \"%s\", fpath = \"%s\"\n",
@@ -64,7 +64,7 @@ static void bb_fullpath(char fpath[PATH_MAX], const char *path)
 
 static void bb_metadata_path(char fpath[PATH_MAX], const char *path)
 {
-    strcpy(fpath, BB_DATA->rootdir);
+    strcpy(fpath, BB_DATA->metadatadir);
     strncat(fpath, path, PATH_MAX); // ridiculously long paths will break here
 
     //log_msg("    bb_fullpath:  rootdir = \"%s\", path = \"%s\", fpath = \"%s\"\n",
@@ -1381,14 +1381,6 @@ int main(int argc, char *argv[])
 	char *t_key    = "iihdh3t3dcld9svd"; //< access token key
 	char *t_secret = "0fw3qvfrqo1dlxx";  //< access token secret
 
-	// Global initialisation
-	drbInit();
-
-	// Create a Dropbox client
-	drbClient* cli = drbCreateClient(c_key, c_secret, t_key, t_secret);
-    // Set default arguments to not repeat them on each API call
-	drbSetDefault(cli, DRBOPT_ROOT, DRBVAL_ROOT_AUTO, DRBOPT_END);
-
     // Perform some sanity checking on the command line:  make sure
     // there are enough arguments, and that neither of the last two
     // start with a hyphen (this will break if you actually have a
@@ -1405,17 +1397,60 @@ int main(int argc, char *argv[])
 
     // Pull the rootdir out of the argument list and save it in my
     // internal data
+
     bb_data->rootdir = realpath(argv[argc-2], NULL);
+
+    char datadir[PATH_MAX];
+    char metadatadir[PATH_MAX];
+    strncpy(datadir, bb_data->rootdir, strlen(bb_data->rootdir));
+    strncpy(datadir + strlen(bb_data->rootdir), "/data", 5);
+    datadir[strlen(bb_data->rootdir) + 5] = '\0';
+    strncpy(metadatadir, bb_data->rootdir, strlen(bb_data->rootdir));
+    strncpy(metadatadir + strlen(bb_data->rootdir), "/metadata", 9);
+    metadatadir[strlen(bb_data->rootdir) + 9] = '\0';
+
+    bb_data->datadir = datadir;
+    bb_data->metadatadir = metadatadir;
+
+    //create local folder
+    int ret = 0;
+	struct stat st = {0};
+	if (stat(bb_data->datadir, &st) == -1) {
+		ret = mkdir(bb_data->datadir, 0700);
+		if (ret < 0){
+			bb_error("Create data folder");
+			return -1;
+		}
+	}
+
+	if (stat(bb_data->metadatadir, &st) == -1) {
+		ret = mkdir(bb_data->metadatadir, 0700);
+		if (ret < 0){
+			bb_error("Create metadata folder");
+			return -1;
+		}
+	}
+
     argv[argc-2] = argv[argc-1];
     argv[argc-1] = NULL;
     argc--;
 
     bb_data->logfile = log_open("bbfs.log");
+
+    // Global initialisation
+	drbInit();
+	// Create a Dropbox client
+	drbClient* cli = drbCreateClient(c_key, c_secret, t_key, t_secret);
+	// Set default arguments to not repeat them on each API call
+	drbSetDefault(cli, DRBOPT_ROOT, DRBVAL_ROOT_AUTO, DRBOPT_END);
     bb_data->client = cli;
 
-    sqlite3 *sqlite_conn = init_db("dir.db");
+    char dbfile_path[PATH_MAX];
+    strncpy(dbfile_path, bb_data->metadatadir, strlen(bb_data->metadatadir));
+    strncpy(dbfile_path + strlen(bb_data->metadatadir), "/dir.db", 7);
+    dbfile_path[strlen(bb_data->metadatadir) + 7] = '\0';
+    sqlite3 *sqlite_conn = init_db(dbfile_path);
     bb_data->sqlite_conn = sqlite_conn;
-    //test_sqlite_insert(sqlite_conn);
 
     // turn over control to fuse
     fprintf(stderr, "about to call fuse_main\n");

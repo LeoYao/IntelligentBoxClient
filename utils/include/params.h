@@ -29,6 +29,8 @@
 struct bb_state {
     FILE *logfile;
     char *rootdir;
+    char *datadir;
+    char *metadatadir;
     drbClient* client;
     sqlite3 *sqlite_conn;
 };
