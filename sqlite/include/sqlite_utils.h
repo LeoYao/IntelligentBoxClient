@@ -75,5 +75,6 @@ int rollback_transaction(sqlite3* db);
 
 lru_entry* pop_lru(sqlite3* db, int create_transaction);
 int push_lru(sqlite3* db, const char* path, int create_transaction);
+int remove_lru(sqlite3* db, const char* path, int create_transaction);
 
 #endif /* SQLITE_UTILS_H_ */

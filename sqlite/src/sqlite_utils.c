@@ -768,8 +768,8 @@ lru_entry* pop_lru(sqlite3* db, int create_transaction){
 	int in_transaction = 0;
 	int rc = 0;
 	lru_entry* result = NULL;
-	lru_entry* head;
-	lru_entry* next;
+	lru_entry* head = NULL;
+	lru_entry* next = NULL;
 
 	if (create_transaction){
 		log_msg("pop_lru: begin_transaction\n");
@@ -846,14 +846,14 @@ lru_entry* pop_lru(sqlite3* db, int create_transaction){
 }
 
 int push_lru(sqlite3* db, const char* path, int create_transaction){
-	log_msg("\npush_lru: Begin\n");
+	log_msg("\npush_lru: Begin [%s]\n", path);
 	int in_transaction = 0;
 	int rc = 0;
 	lru_entry* curr = NULL;
-	lru_entry* prev;
-	lru_entry* next;
-	lru_entry* tail;
-	lru_entry* tail_prev;
+	lru_entry* prev = NULL;
+	lru_entry* next = NULL;
+	lru_entry* tail = NULL;
+	lru_entry* tail_prev = NULL;
 
 	if (create_transaction){
 		log_msg("push_lru: begin_transaction\n");
@@ -953,3 +953,78 @@ int push_lru(sqlite3* db, const char* path, int create_transaction){
 	return rc;
 }
 
+int remove_lru(sqlite3* db, const char* path, int create_transaction){
+
+	log_msg("\remove_lru: Begin [%s]\n", path);
+	int in_transaction = 0;
+	int rc = 0;
+	lru_entry* to_remove = NULL;
+	lru_entry* prev = NULL;
+	lru_entry* next = NULL;
+
+	if (create_transaction){
+		log_msg("push_lru: begin_transaction\n");
+		rc = begin_transaction(db);
+		if (rc == SQLITE_OK){
+			in_transaction = 1;
+		} else {
+			log_msg("push_lru: Failed to begin_transaction\n");
+		}
+	}
+
+	if (rc == SQLITE_OK){
+		log_msg("push_lru: find to_remove\n");
+		to_remove = select_lru(db, path);
+	}
+
+	if (to_remove != NULL){
+		log_msg("push_lru: find prev\n");
+		prev = select_lru(db, to_remove->prev);
+
+		log_msg("push_lru: find next\n");
+		next = select_lru(db, to_remove->next);
+
+		if (prev == NULL || next == NULL){
+			log_msg("push_lru: Failed to find prev or next\n");
+			rc = -1;
+		}
+
+		if (rc == SQLITE_OK){
+			log_msg("push_lru: update prev->next\n");
+			free(prev->next);
+			prev->next = copy(to_remove->next);
+			rc = update_lru(db, prev);
+		}
+
+		if (rc == SQLITE_OK){
+			log_msg("push_lru: update next->prev\n");
+			free(next->prev);
+			next->prev = copy(to_remove->prev);
+			rc = update_lru(db, next);
+		}
+
+		if (rc == SQLITE_OK){
+			log_msg("push_lru: delete to_remove\n");
+			rc = delete_lru(to_remove->curr);
+		}
+	}
+
+	if (in_transaction){
+		if (rc == SQLITE_OK){
+			log_msg("remove_lru: commit_transaction\n");
+			rc = commit_transaction(db);
+		} else {
+			log_msg("remove_lru: rollback_transaction\n");
+			rc = rollback_transaction(db);
+		}
+	}
+
+	log_msg("remove_lru: free memory\n");
+	free_lru(to_remove);
+	free_lru(prev);
+	free_lru(next);
+
+	log_msg("remove_lru: Completed\n");
+
+	return rc;
+}
