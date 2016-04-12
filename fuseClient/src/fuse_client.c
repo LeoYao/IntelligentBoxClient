@@ -209,7 +209,7 @@ int ibc_mkdir(const char *path, mode_t mode)
 }
 
 /** Remove a file */
-int bb_unlink(const char *path)
+int ibc_unlink(const char *path)
 {
     int retstat = 0;
     char fpath[PATH_MAX];
@@ -227,13 +227,13 @@ int bb_unlink(const char *path)
     	err_sqlite = update_time(db1, path_in_sqlite, 1, time);
     	err_sqlite = update_time(db1, path_in_sqlite, 0, time);
     }else{
-    log_msg("\nbb_unlink(path=\"%s\")\n",
+    log_msg("\nibc_unlink(path=\"%s\")\n",
 	    path);
     bb_fullpath(fpath, path);
     retstat = unlink(fpath);
 
     if (retstat < 0)
-	retstat = bb_error("bb_unlink unlink");
+	retstat = bb_error("ibc_unlink unlink");
     //Begin transaction
     err_sqlite = update_isLocal(db1, path_in_sqlite, 0);
     err_sqlite = update_isDeleted(db1, path_in_sqlite);
@@ -1260,7 +1260,7 @@ int ibc_getattr(const char *path, struct stat *statbuf)
 		}
 		log_stat(statbuf);
 	} else {
-		ret = -ENONET;
+		ret = -ENOENT;
 	}
 
 	free_directory(dir);
@@ -1300,7 +1300,7 @@ struct fuse_operations bb_oper = {
 	  mknod = bb_mknod,*/
 	  .mkdir = ibc_mkdir,
 
-	  .unlink = bb_unlink,
+	  .unlink = ibc_unlink,
 	  .rmdir = ibc_rmdir,
 	  /*
 	  symlink = bb_symlink,
