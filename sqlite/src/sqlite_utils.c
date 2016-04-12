@@ -541,14 +541,15 @@ int begin_transaction(sqlite3* db){
 	char* sql = "BEGIN TRANSACTION;";
 	char *zErrMsg = 0;
 	//Begin transaction to database
+	log_msg("begin_transaction: Runing [%s]\n", sql);
 	int rc = sqlite3_exec(db, sql, 0, 0, &zErrMsg);
 	//If SQLITE is busy, retry twice, if still busy then abort
 	for(int i=0;i<2;i++){
 		if(rc == SQLITE_BUSY){
-			free(zErrMsg);
+			log_msg("begin_transaction: Retrying [%d] times\n", i);
+			sqlite3_free(zErrMsg);
 			delay(500);
 			rc = sqlite3_exec(db, sql, 0, 0, &zErrMsg);
-
 		}else{
 			break;
 		}
@@ -556,15 +557,18 @@ int begin_transaction(sqlite3* db){
 
 	if (rc != SQLITE_OK){
 		log_msg("begin_transaction: Failed to run 'BEGIN TRANSACTION'. Error message: %s\n", zErrMsg);
-		free(zErrMsg);
+		sqlite3_free(zErrMsg);
 		return rc;
 	}
+
 	sql = "UPDATE LOCK SET dummy = 1;";
+	log_msg("begin_transaction: Runing [%s]\n", sql);
 	rc = sqlite3_exec(db, sql, 0, 0, &zErrMsg);
 	//If SQLITE is busy, retry twice, if still busy then abort
 	for(int i=0;i<2;i++){
 		if(rc == SQLITE_BUSY){
-			free(zErrMsg);
+			log_msg("begin_transaction: Retrying [%d] times\n", i);
+			sqlite3_free(zErrMsg);
 			delay(500);
 			rc = sqlite3_exec(db, sql, 0, 0, &zErrMsg);
 		}else{
@@ -573,7 +577,7 @@ int begin_transaction(sqlite3* db){
 	}
 	if (rc != SQLITE_OK){
 		log_msg("\nbegin_transaction: Failed to create a transaction. Error message: %s\n", zErrMsg);
-		free(zErrMsg);
+		sqlite3_free(zErrMsg);
 	}
 	log_msg("begin_transaction: Completed\n");
 
@@ -588,7 +592,7 @@ int commit_transaction(sqlite3* db){
 	if (rc != SQLITE_OK){
 		log_msg("\commit_transaction: Failed to commit a transaction. Error message: %s\n", sqlite3_errmsg(db));
 	}
-	free(zErrMsg);
+	sqlite3_free(zErrMsg);
 	log_msg("commit_transaction: Completed\n");
 
 	return rc;
@@ -601,7 +605,7 @@ int rollback_transaction(sqlite3* db){
 	if (rc != SQLITE_OK){
 		log_msg("rollback_transaction: Failed to rollback a trasaction. Error message: %s", zErrMsg);
 	}
-	free(zErrMsg);
+	sqlite3_free(zErrMsg);
 	log_msg("rollback_transaction: Completed\n");
 	return rc;
 }
