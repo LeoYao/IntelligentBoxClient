@@ -230,6 +230,45 @@ directory** search_subdirectories(sqlite3* db, char* parent_path, int* count){
 	return datas;
 }
 
+int update_time(sqlite3* db, char* full_path, int mode, long time){
+	log_msg("\nUpdate_Time: Begin\n");
+	sqlite3_stmt *stmt;
+	int rc;
+	char* sql;
+	if(mode == 1){
+		sql = "UPDATE Directory SET atime = ? WHERE full_path = ?\0";
+		log_msg("\nUpdate mtime!\n");
+		}else if(mode == 0){
+		sql = "UPDATE Directory SET mtime = ? WHERE full_path = ?\0";
+		log_msg("\nUpdate atime!\n");
+	}
+	rc = sqlite3_prepare_v2(db, sql, -1, &stmt, 0);
+
+	if (rc == SQLITE_OK) {
+		log_msg("update_isLocal: Statement is prepared: %s\n", sql);
+		sqlite3_bind_int(stmt, 1, time);
+		sqlite3_bind_text(stmt, 2, full_path, -1, SQLITE_TRANSIENT);
+		log_msg("update_isLocal: Statement is binded.\n");
+	} else {
+		log_msg("update_isLocal: Failed to prepare statement. Error message: %s\n", sqlite3_errmsg(db));
+	}
+
+	if (rc == SQLITE_OK){
+		rc = sqlite3_step(stmt);
+		if (rc == SQLITE_DONE){
+			log_msg("update_isLocal: Successful\n");
+			rc = SQLITE_OK;
+		}else {
+			log_msg("update_isLocal: An Error Has Occured! Error message: %s\n", sqlite3_errmsg(db));
+		}
+	}
+
+	sqlite3_finalize(stmt);
+
+	log_msg("update_isLocal: Completed\n");
+	return 0;
+}
+
 int update_isLocal(sqlite3* db, char* full_path,int mode){
 
 	log_msg("\nupdate_isLocal: Begin\n");

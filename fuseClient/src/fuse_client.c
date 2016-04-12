@@ -68,76 +68,6 @@ static void bb_fullpath(char fpath[PATH_MAX], const char *path)
 	    BB_DATA->rootdir, path, fpath);
 }
 
-void update_atime(const char *path){
-
-	int rc;
-	char *zErrMsg = 0;
-	char fpath[PATH_MAX];
-	bb_fullpath(fpath, path);
-
-
-	sqlite3* db1 = BB_DATA->sqlite_conn;
-
-	time_t now;
-	struct tm ts;
-	char buf[80];
-	time(&now);
-	ts = *localtime(&time);
-	strftime(buf, sizeof(buf), "%a %Y-%m-%d %H:%M:%S %Z", &ts);
-	char* sql4 = "UPDATE Directory SET atime =";
-	char* sql5 = "WHERE full_path =";
-	char* sql_update_atime = "";
-//			(char*)malloc(5+strlen(sql4)+strlen(buf)+strlen(sql5)+strlen(fpath));
-	strncpy(sql_update_atime, sql4, strlen(sql4)+1);
-	strncpy(sql_update_atime, buf, strlen(buf)+1);
-	strncpy(sql_update_atime, sql5, strlen(sql5)+1);
-	strncpy(sql_update_atime, fpath, strlen(fpath)+1);
-
-   //Update on atime in Directory table
-	rc = sqlite3_exec(db1, sql_update_atime, 0, 0, &zErrMsg);
-
-   // If there's an error updating the database table, print it out.
-	if( rc!=SQLITE_OK ){
-			fprintf(stderr, "SQL error: %s\n", zErrMsg);
-			sqlite3_free(zErrMsg);
-		}
-//	return (0);
-}
-
-void update_mtime(const char *path){
-	int rc=0;
-	char* zErrMsg = 0;
-	char fpath[PATH_MAX];
-	bb_fullpath(fpath, path);
-
-
-	sqlite3* db1 = BB_DATA->sqlite_conn;
-
-	time_t now;
-		struct tm ts;
-		char buf[80];
-		time(&now);
-		ts = *localtime(&time);
-		strftime(buf, sizeof(buf), "%a %Y-%m-%d %H:%M:%S %Z", &ts);
-		char* sql4 = "UPDATE Directory SET mtime =";
-		char* sql5 = "WHERE full_path =";
-		char* sql_update_mtime = "";
-				//(char*)malloc(5+strlen(sql4)+strlen(buf)+strlen(sql5)+strlen(fpath));
-		strncpy(sql_update_mtime, sql4, strlen(sql4)+1);
-		strncpy(sql_update_mtime, buf, strlen(buf)+1);
-		strncpy(sql_update_mtime, sql5, strlen(sql5)+1);
-		strncpy(sql_update_mtime, fpath, strlen(fpath)+1);
-		//Update on atime in Directory table
-		rc = sqlite3_exec(db1, sql_update_mtime, 0, 0, &zErrMsg);
-
-		// If there's an error updating the database table, print it out.
-		if( rc!=SQLITE_OK ){
-				fprintf(stderr, "SQL error: %s\n", zErrMsg);
-				sqlite3_free(zErrMsg);
-			}
-//		return (0);
-
-}
 
 /** Read the target of a symbolic link
  *
@@ -224,6 +154,7 @@ int ibc_mkdir(const char *path, mode_t mode)
     char* file_name = get_file_name(path);
     int err_dbx = DRBERR_OK;
     int err_sqlite = 0;
+    long time = get_current_epoch_time();
 
 //    drbClient* cli = BB_DATA->client;
     sqlite3* db1 = BB_DATA->sqlite_conn;
@@ -254,6 +185,8 @@ int ibc_mkdir(const char *path, mode_t mode)
     				""
     				);
     	err_sqlite = insert_directory(db1, dir);
+    	err_sqlite = update_time(db1, path_in_sqlite, 1, time);
+    	err_sqlite = update_time(db1, path_in_sqlite, 0, time);
 
     	log_msg("\nInsert Directory Info Into Database Table After mkdir!\n");
     	free_directory(dir);
@@ -285,10 +218,14 @@ int bb_unlink(const char *path)
     int err_dbx = DRBERR_OK;
     int err_sqlite = 0;
     directory* dir;
+    long time = get_current_epoch_time();
+
     int err_trans = begin_transaction(BB_DATA->sqlite_conn);
     dir = search_directory(db1, path_in_sqlite);
     if(dir->is_local == 0){
     	err_sqlite = update_isDeleted(db1, path_in_sqlite);
+    	err_sqlite = update_time(db1, path_in_sqlite, 1, time);
+    	err_sqlite = update_time(db1, path_in_sqlite, 0, time);
     }else{
     log_msg("\nbb_unlink(path=\"%s\")\n",
 	    path);
@@ -300,6 +237,8 @@ int bb_unlink(const char *path)
     //Begin transaction
     err_sqlite = update_isLocal(db1, path_in_sqlite, 0);
     err_sqlite = update_isDeleted(db1, path_in_sqlite);
+    err_sqlite = update_time(db1, path_in_sqlite, 1, time);
+    err_sqlite = update_time(db1, path_in_sqlite, 0, time);
     }
 	//Finish transaction
 	if (err_trans == 0){
@@ -329,6 +268,7 @@ int ibc_rmdir(const char *path)
     int err_dbx = DRBERR_OK;
     int err_sqlite = 0;
     directory* dir;
+    long time = get_current_epoch_time();
 
 
     log_msg("\nibc_rmdir(path=\"%s\")\n",
@@ -338,6 +278,9 @@ int ibc_rmdir(const char *path)
     dir = search_directory(db1, path_in_sqlite);
     if(dir->is_local == 0){
     	err_sqlite = update_isDeleted(db1, path_in_sqlite);
+        err_sqlite = update_time(db1, path_in_sqlite, 1, time);
+        err_sqlite = update_time(db1, path_in_sqlite, 0, time);
+
     }else{
     retstat = rmdir(fpath);
     if (retstat < 0)
@@ -348,6 +291,8 @@ int ibc_rmdir(const char *path)
 
     err_sqlite = update_isDeleted(db1, path_in_sqlite);
     err_sqlite = update_isLocal(db1, path_in_sqlite, 0);
+    err_sqlite = update_time(db1, path_in_sqlite, 1, time);
+    err_sqlite = update_time(db1, path_in_sqlite, 0, time);
     }
 	//Finish transaction
 	if (err_trans == 0){
@@ -665,8 +610,8 @@ int bb_write(const char *path, const char *buf, size_t size, off_t offset,
     // Get timestamp when the file was open
     begin_transaction(db1);
     update_isModified(db1, fpath);
-    update_atime(fpath);
-    update_mtime(fpath);
+    //update_atime(fpath);
+    //update_mtime(fpath);
     commit_transaction(db1);
 
 //    free(sql_update_is_modified);
@@ -1028,8 +973,8 @@ int bb_create(const char *path, mode_t mode, struct fuse_file_info *fi)
  	   sqlite3_free(zErrMsg);
     }
 
-    update_atime(fpath);
-    update_mtime(fpath);
+//    update_atime(fpath);
+//    update_mtime(fpath);
 
     rc = sqlite3_exec(db1, "COMMIT", 0, 0, &zErrMsg);
     if(rc != SQLITE_OK){

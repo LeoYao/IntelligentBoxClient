@@ -61,6 +61,7 @@ directory* directory_from_dbx(drbMetadata* metadata);
 void free_directory(directory* dir);
 void free_directories(directory** dirs, int size);
 directory* search_directory(sqlite3* db, char* full_path);
+int update_time(sqlite3* db, char* full_path, int mode, long time);
 int update_isLocal(sqlite3* db, char* full_path, int mode);
 int update_isDeleted(sqlite3* db, char* full_path);
 int update_isModified(sqlite3* db, char* full_path);
