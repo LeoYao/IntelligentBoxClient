@@ -339,6 +339,143 @@ int ibc_mkdir(const char *path, mode_t mode)
     return retstat;
 }
 
+/** Rename a file */
+// both path and newpath are fs-relative
+int bb_rename(const char *path, const char *newpath)
+{
+	log_msg("\n>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n");
+	log_msg("bb_rename(path=\"%s\")\n",path);
+	log_msg(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n");
+
+	directory* dir = NULL;
+
+    int retstat = 0;
+    int err_sqlite = 0;
+    int err_dbx = 0;
+    char fpath[PATH_MAX];
+    char fnewpath[PATH_MAX];
+    bb_fullpath(fpath, path);
+    bb_fullpath(fnewpath, newpath);
+
+    char* parent_path = get_parent_path(path);
+	char* path_in_sqlite = path;
+	char* parent_path_in_sqlite = get_parent_path(path);
+	if (strlen(path) == 1){
+		path_in_sqlite = "\0";
+		parent_path_in_sqlite = copy_text(".\0");
+	}
+    char* parent_newpath = get_parent_path(newpath);
+	char* newpath_in_sqlite = newpath;
+	char* parent_newpath_in_sqlite = get_parent_path(newpath);
+	char* new_filename = get_file_name(newpath);
+
+	if (strlen(path) == 1){
+		newpath_in_sqlite = "\0";
+		parent_newpath_in_sqlite = copy_text(".\0");
+	}
+
+    //Begin transaction
+	log_msg("bb_rename: begin_transaction\n");
+	int err_trans = begin_transaction(BB_DATA->sqlite_conn);
+	if (err_trans != 0){
+		retstat = -EBUSY;
+	}
+
+	if (retstat >= 0){
+		log_msg("bb_rename: search_directory [%s]\n", path_in_sqlite);
+		dir = search_directory(BB_DATA->sqlite_conn, path_in_sqlite);
+		if (dir == NULL || dir->is_delete){
+			retstat = -ENOENT;
+		}
+	}
+
+	if (retstat >= 0){
+		// If the file is not on local, Download it from Dropbox
+		if(dir->is_local == 0){
+			drbMetadata* metadata;
+			log_msg("bb_open: download_dbx_file from [%s] to [%s]\n", path, fpath);
+			err_dbx = download_dbx_file(BB_DATA->client, &metadata, path, fpath);
+			dir->is_local = 1;
+			if (err_dbx != 0){
+				retstat = -EIO;
+			}
+		}
+	}
+
+	if (retstat >= 0){
+		log_msg("bb_rename: update_isDeleted [%s]\n", path_in_sqlite);
+		err_sqlite = update_isDeleted(BB_DATA->sqlite_conn, path_in_sqlite);
+		if (err_sqlite != 0){
+			retstat = -EIO;
+		}
+	}
+
+	if (retstat >= 0){
+		log_msg("bb_rename: delete_directory [%s]\n", newpath_in_sqlite);
+		err_sqlite = delete_directory(BB_DATA->sqlite_conn, newpath_in_sqlite);
+		if (err_sqlite != 0){
+			retstat = -EIO;
+		}
+	}
+
+	if (retstat >= 0){
+		free(dir->full_path);
+		free(dir->parent_folder_full_path);
+		free(dir->entry_name);
+		dir->full_path = copy_text(newpath_in_sqlite);
+		dir->parent_folder_full_path = copy_text(parent_newpath_in_sqlite);
+		dir->entry_name = copy_text(new_filename);
+		dir->is_modified = 1;
+
+		log_msg("bb_rename: delete_directory [%s]\n", newpath_in_sqlite);
+		err_sqlite = insert_directory(BB_DATA->sqlite_conn, dir);
+		if (err_sqlite != 0){
+			retstat = -EIO;
+		}
+	}
+
+	if (retstat >= 0){
+		err_sqlite = push_lru(BB_DATA->sqlite_conn, newpath_in_sqlite, 0);
+		if (err_sqlite != 0){
+			retstat = -EIO;
+		}
+	}
+
+	if (retstat >= 0){
+		log_msg("bb_rename: rename from [%s] to [%s]\n", fpath, fnewpath);
+		retstat = rename(fpath, fnewpath);
+		if (retstat < 0)
+			retstat = bb_error("bb_rename rename");
+	}
+
+	//Finish transaction
+	if (err_trans == 0){
+		if (retstat >= 0){
+			log_msg("bb_rename: commit_transaction\n");
+			err_trans = commit_transaction(BB_DATA->sqlite_conn);
+		}
+		else{
+			log_msg("bb_rename: rollback_transaction\n");
+			err_trans = rollback_transaction(BB_DATA->sqlite_conn);
+		}
+
+		if (err_trans != 0){
+			log_msg("bb_rename: Failed to commit_transaction or rollback_transaction\n");
+			retstat = -EIO;
+		}
+	}
+
+    free(parent_path);
+    free(parent_path_in_sqlite);
+    free(parent_newpath);
+    free(parent_newpath_in_sqlite);
+    free(new_filename);
+    free_directory(dir);
+
+    log_msg("bb_rename: Completed\n");
+    return retstat;
+}
+
 /** Remove a file */
 int ibc_unlink(const char *path)
 {
@@ -508,6 +645,9 @@ int ibc_rmdir(const char *path)
 			}
 
 			if (retstat >= 0) {
+				log_msg("ibc_rmdir: update_isModified [%s]\n", path_in_sqlite);
+				err_sqlite += update_isModified(BB_DATA->sqlite_conn, path_in_sqlite);
+
 				log_msg("ibc_rmdir: update_isDeleted [%s]\n", path_in_sqlite);
 				err_sqlite += update_isDeleted(BB_DATA->sqlite_conn, path_in_sqlite);
 
@@ -527,6 +667,9 @@ int ibc_rmdir(const char *path)
 			}
 
 			if (retstat >= 0){
+				log_msg("ibc_rmdir: update_isModified [%s]\n", path_in_sqlite);
+				err_sqlite += update_isModified(BB_DATA->sqlite_conn, path_in_sqlite);
+
 				log_msg("ibc_rmdir: update_isDeleted [%s]\n", path_in_sqlite);
 				err_sqlite += update_isDeleted(BB_DATA->sqlite_conn, path_in_sqlite);
 
@@ -1613,6 +1756,7 @@ struct fuse_operations bb_oper = {
 	  .getattr = ibc_getattr,
 	  .mknod = bb_mknod,
 	  .mkdir = ibc_mkdir,
+	  .rename = bb_rename,
 	  .unlink = ibc_unlink,
 	  .rmdir = ibc_rmdir,
 	  .truncate = bb_truncate,
