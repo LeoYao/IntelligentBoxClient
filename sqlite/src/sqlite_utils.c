@@ -597,6 +597,14 @@ sqlite3* init_db(const char* dbfile_path){
 	log_msg("init_db: Completed initializing table DIRECTORY\n", sql);
 	free(sql);
 
+	sql = "update directory set in_use_count = 0;";
+	log_msg("init_db: clearing in_use_count\n", sql);
+	rc = sqlite3_exec(sqlite_conn, sql, 0, 0, &zErrMsg);
+	if( rc != SQLITE_OK ){
+		log_msg("init_db: Failed to clear in_use_count. Error message: %s\n", zErrMsg);
+		sqlite3_free(zErrMsg);
+	}
+	log_msg("init_db: Completed clearing in_use_count\n", sql);
 
 	sql = "create table if not exists LOCK (dummy char(1));";
 	log_msg("init_db: createing table LOCK\n", sql);
@@ -634,7 +642,6 @@ sqlite3* init_db(const char* dbfile_path){
 		log_msg("init_db: Failed to initalize table LRU_QUEUE (tail). Error message: %s\n", zErrMsg);
 		sqlite3_free(zErrMsg);
 	}
-	log_msg("init_db: Completed initalize table LRU_QUEUE (head)\n", sql);
 
 	return (sqlite_conn);
 }
