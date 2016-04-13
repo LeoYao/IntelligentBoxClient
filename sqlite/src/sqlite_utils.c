@@ -180,7 +180,7 @@ directory* search_directory(sqlite3* db, const char* full_path){
 	return data;
 }
 
-directory** search_subdirectories(sqlite3* db, const char* parent_path, int* count){
+directory** search_subdirectories(sqlite3* db, const char* parent_path, int* count, int include_deleted){
 
 	log_msg("\nsearch_subdirectories: Begin\n");
 
@@ -189,7 +189,11 @@ directory** search_subdirectories(sqlite3* db, const char* parent_path, int* cou
 	int capacity = 1;
 	sqlite3_stmt *stmt;
 	int rc;
-	char* sql = "SELECT full_path, parent_folder_full_path, entry_name, old_full_path, type, size, mtime, atime, is_locked, is_modified, is_local, is_deleted, in_use_count, revision FROM Directory WHERE parent_folder_full_path = ?";
+	char* sql = "SELECT full_path, parent_folder_full_path, entry_name, old_full_path, type, size, mtime, atime, is_locked, is_modified, is_local, is_deleted, in_use_count, revision FROM Directory WHERE parent_folder_full_path = lower(?)";
+
+	if (!include_deleted){
+		sql = "SELECT full_path, parent_folder_full_path, entry_name, old_full_path, type, size, mtime, atime, is_locked, is_modified, is_local, is_deleted, in_use_count, revision FROM Directory WHERE parent_folder_full_path = lower(?) and is_deleted = 0";
+	}
 
 	rc = sqlite3_prepare_v2(db, sql, -1, &stmt, 0);
 
@@ -440,7 +444,7 @@ int insert_directory(sqlite3* db, directory* data){
 	log_msg("\ninsert_directory: Begin [%s]\n", data->full_path);
 	sqlite3_stmt *stmt;
 	int rc;
-	char* sql = "INSERT INTO Directory (full_path, parent_folder_full_path, entry_name, old_full_path, type, size, mtime, atime, is_locked, is_modified, is_local, is_deleted, in_use_count, revision) VALUES( ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)\0";
+	char* sql = "INSERT INTO Directory (full_path, parent_folder_full_path, entry_name, old_full_path, type, size, mtime, atime, is_locked, is_modified, is_local, is_deleted, in_use_count, revision) VALUES( lower(?), lower(?), lower(?), lower(?), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)\0";
 
 	rc = sqlite3_prepare_v2(db, sql, -1, &stmt, 0);
 	if (rc == SQLITE_OK) {
@@ -478,6 +482,40 @@ int insert_directory(sqlite3* db, directory* data){
 
 	log_msg("insert_directory: Completed\n");
 	return 0;
+}
+
+
+int delete_directory(sqlite3* db, const char* full_path){
+
+	sqlite3_stmt *stmt = NULL;
+	int rc;
+	log_msg("\ndelete_directory: Begin\n");
+
+	char* sql = "DELETE FROM directory WHERE full_path = ?;";
+	rc = sqlite3_prepare_v2(db, sql, -1, &stmt, 0);
+
+	if (rc == SQLITE_OK) {
+		log_msg("delete_directory: Statement is prepared: %s\n", sql);
+		rc = sqlite3_bind_text(stmt, 1, full_path, -1, SQLITE_TRANSIENT);
+		log_msg("delete_directory: Statement is binded.\n");
+	} else {
+		log_msg("delete_directory: Failed to prepare statement. Error message: %s\n", sqlite3_errmsg(db));
+	}
+
+	if (rc == SQLITE_OK){
+		rc = sqlite3_step(stmt);
+		if (rc == SQLITE_DONE){
+			log_msg("delete_directory: Successful\n");
+			rc = SQLITE_OK;
+		}else {
+			log_msg("delete_directory: An Error Has Occured! Error message: %s\n", sqlite3_errmsg(db));
+		}
+	}
+
+	sqlite3_finalize(stmt);
+	log_msg("delete_directory: Completed\n");
+
+	return rc;
 }
 
 int clean_subdirectories(sqlite3* db, const char* parent_path){
@@ -938,18 +976,27 @@ int push_lru(sqlite3* db, const char* path, int create_transaction){
 			log_msg("push_lru: create curr [%s]\n", path);
 			curr = (lru_entry*)malloc(sizeof(lru_entry));
 			curr->curr = copy_text(path);
+			curr->prev = copy_text("");
+			curr->next = copy_text("");
 			rc = insert_lru(db, curr);
 		} else {
-			log_msg("push_lru: find prev [%s]\n", curr->prev);
-            prev = select_lru(db, curr->prev);
+			if (rc == SQLITE_OK) {
+				log_msg("push_lru: find prev [%s]\n", curr->prev);
+				prev = select_lru(db, curr->prev);
+				if (prev == NULL){
+					log_msg("push_lru: Failed to find prev\n");
+					rc = -1;
+				}
+			}
 
-            log_msg("push_lru: find next [%s]\n", curr->next);
-            next = select_lru(db, curr->next);
-
-            if (prev == NULL || next == NULL){
-            	log_msg("push_lru: Failed to find prev or next\n");
-            	rc = -1;
-            }
+			if (rc == SQLITE_OK) {
+				log_msg("push_lru: find next [%s]\n", curr->next);
+				next = select_lru(db, curr->next);
+				if (next == NULL){
+					log_msg("push_lru: Failed to find next\n");
+					rc = -1;
+				}
+			}
 
             if (rc == SQLITE_OK) {
             	log_msg("push_lru: update prev->next\n");
@@ -1031,7 +1078,7 @@ int push_lru(sqlite3* db, const char* path, int create_transaction){
 
 int remove_lru(sqlite3* db, const char* path, int create_transaction){
 
-	log_msg("\remove_lru: Begin [%s]\n", path);
+	log_msg("\nremove_lru: Begin [%s]\n", path);
 	int in_transaction = 0;
 	int rc = 0;
 	lru_entry* to_remove = NULL;
@@ -1039,55 +1086,55 @@ int remove_lru(sqlite3* db, const char* path, int create_transaction){
 	lru_entry* next = NULL;
 
 	if (create_transaction){
-		log_msg("push_lru: begin_transaction\n");
+		log_msg("remove_lru: begin_transaction\n");
 		rc = begin_transaction(db);
 		if (rc == SQLITE_OK){
 			in_transaction = 1;
 		} else {
-			log_msg("push_lru: Failed to begin_transaction\n");
+			log_msg("remove_lru: Failed to begin_transaction\n");
 		}
 	}
 
 	if (rc == SQLITE_OK){
-		log_msg("push_lru: find to_remove\n");
+		log_msg("remove_lru: find to_remove\n");
 		to_remove = select_lru(db, path);
 	}
 
 	if (rc == SQLITE_OK && to_remove != NULL){
 		if (rc == SQLITE_OK){
-			log_msg("push_lru: find prev\n");
+			log_msg("remove_lru: find prev\n");
 			prev = select_lru(db, to_remove->prev);
-			if (prev == NULL || next == NULL){
-				log_msg("push_lru: Failed to find prev\n");
+			if (prev == NULL){
+				log_msg("remove_lru: Failed to find prev\n");
 				rc = -1;
 			}
 		}
 
 		if (rc == SQLITE_OK){
-			log_msg("push_lru: find next\n");
+			log_msg("remove_lru: find next\n");
 			next = select_lru(db, to_remove->next);
-			if (prev == NULL || next == NULL){
-				log_msg("push_lru: Failed to find next\n");
+			if (next == NULL){
+				log_msg("remove_lru: Failed to find next\n");
 				rc = -1;
 			}
 		}
 
 		if (rc == SQLITE_OK){
-			log_msg("push_lru: update prev->next\n");
+			log_msg("remove_lru: update prev->next\n");
 			free(prev->next);
-			prev->next = copy(to_remove->next);
+			prev->next = copy_text(to_remove->next);
 			rc = update_lru(db, prev);
 		}
 
 		if (rc == SQLITE_OK){
-			log_msg("push_lru: update next->prev\n");
+			log_msg("remove_lru: update next->prev\n");
 			free(next->prev);
-			next->prev = copy(to_remove->prev);
+			next->prev = copy_text(to_remove->prev);
 			rc = update_lru(db, next);
 		}
 
 		if (rc == SQLITE_OK){
-			log_msg("push_lru: delete to_remove\n");
+			log_msg("remove_lru: delete to_remove\n");
 			rc = delete_lru(db, to_remove->curr);
 		}
 	}
