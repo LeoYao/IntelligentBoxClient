@@ -16,6 +16,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/types.h>
+#include <pthread.h>
 
 #include <dropbox.h>
 #include <memStream.h>
@@ -103,6 +104,7 @@ int ibc_mknod(const char *path, mode_t mode, dev_t dev)
 	log_msg("\n>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n");
 	log_msg("ibc_mknod(path=\"%s\", mode=0%3o, dev=%lld)\n", path, mode, dev);
 	log_msg(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n");
+	pthread_mutex_lock(BB_DATA->lck);
 
 	int retstat = 0;
 	int err_sqlite = 0;
@@ -229,7 +231,10 @@ int ibc_mknod(const char *path, mode_t mode, dev_t dev)
 	free(parent_path_in_sqlite);
 	free(file_name);
 
+	pthread_mutex_unlock(BB_DATA->lck);
+
 	log_msg("ibc_mknod: Completed\n");
+
 	return retstat;
 }
 
@@ -241,6 +246,8 @@ int ibc_mkdir(const char *path, mode_t mode)
 	log_msg(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n");
     int retstat = 0;
     int err_sqlite = 0;
+
+    pthread_mutex_lock(BB_DATA->lck);
 
     char* path_in_sqlite = path;
     char* parent_path_in_sqlite = get_parent_path(path);
@@ -325,6 +332,7 @@ int ibc_mkdir(const char *path, mode_t mode)
 			retstat = -EIO;
 		}
 	}
+	pthread_mutex_unlock(BB_DATA->lck);
 
 	log_msg("ibc_mkdir: Completed\n");
     return retstat;
@@ -337,6 +345,8 @@ int ibc_rename(const char *path, const char *newpath)
 	log_msg("\n>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n");
 	log_msg("ibc_rename(path=\"%s\")\n",path);
 	log_msg(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n");
+
+	pthread_mutex_lock(BB_DATA->lck);
 
 	directory* dir = NULL;
 
@@ -480,6 +490,8 @@ int ibc_rename(const char *path, const char *newpath)
     free(new_filename);
     free_directory(dir);
 
+    pthread_mutex_unlock(BB_DATA->lck);
+
     log_msg("ibc_rename: Completed\n");
     return retstat;
 }
@@ -491,6 +503,8 @@ int ibc_unlink(const char *path)
 	log_msg("ibc_unlink(path=\"%s\")\n",path);
 	log_msg(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n");
 	directory* dir = NULL;
+
+	pthread_mutex_lock(BB_DATA->lck);
 
     int retstat = 0;
     int err_dbx = DRBERR_OK;
@@ -590,6 +604,8 @@ int ibc_unlink(const char *path)
 	log_msg("ibc_unlink: release memory\n");
 	free_directory(dir);
 
+	pthread_mutex_unlock(BB_DATA->lck);
+
 	log_msg("ibc_unlink: Completed\n");
 	return retstat;
 }
@@ -600,6 +616,8 @@ int ibc_rmdir(const char *path)
 	log_msg("\n>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n");
     log_msg("ibc_rmdir(path=\"%s\")\n", path);
     log_msg(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n");
+
+    pthread_mutex_lock(BB_DATA->lck);
 
     int retstat = 0;
     char* path_in_sqlite = path;
@@ -731,6 +749,8 @@ int ibc_rmdir(const char *path)
 	free_directory(dir);
 	free_directories(subdirs, subdir_cnt);
 
+	pthread_mutex_unlock(BB_DATA->lck);
+
 	log_msg("ibc_rmdir: Completed\n");
 	return retstat;
 }
@@ -802,6 +822,8 @@ int ibc_utime(const char *path, struct utimbuf *ubuf)
 	log_msg("ibc_utime(path=\"%s\", ubuf=0x%08x)\n",path, ubuf);
 	log_msg(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n");
 
+	pthread_mutex_lock(BB_DATA->lck);
+
     int retstat = 0;
     int err_sqlite;
     char* path_in_sqlite = path;
@@ -854,6 +876,8 @@ int ibc_utime(const char *path, struct utimbuf *ubuf)
 		}
 	}
 
+	pthread_mutex_unlock(BB_DATA->lck);
+
 	log_msg("utime: Completed\n");
     return retstat;
 }
@@ -878,6 +902,8 @@ int ibc_open(const char *path, struct fuse_file_info *fi)
 	log_msg("\n>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n");
 	log_msg("ibc_open: [%s]\n", path);
 	log_msg(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n");
+
+	pthread_mutex_lock(BB_DATA->lck);
 
 	char* path_in_sqlite = path;
 	if (strlen(path) == 1){
@@ -989,6 +1015,8 @@ int ibc_open(const char *path, struct fuse_file_info *fi)
 
 	free_directory(dir);
 
+	pthread_mutex_unlock(BB_DATA->lck);
+
 	log_msg("ibc_open: Completed\n");
 	return retstat;
 
@@ -1018,11 +1046,6 @@ int ibc_read(const char *path, char *buf, size_t size, off_t offset, struct fuse
 
     int retstat = 0;
 
-    char* path_in_sqlite = path;
-	if (strlen(path) == 1){
-		path_in_sqlite = "\0";
-	}
-
 	log_msg("ibc_read: pread. fi->fh: [%lld], size: [%d], offset: [%lld]\n", fi->fh, size, offset);
     retstat = pread(fi->fh, buf, size, offset);
     if (retstat < 0)
@@ -1048,6 +1071,8 @@ int ibc_write(const char *path, const char *buf, size_t size, off_t offset,
 	log_msg("\n>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n");
 	log_msg("ibc_write: [%s]\n", path);
 	log_msg(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n");
+
+	pthread_mutex_lock(BB_DATA->lck);
 
 	char* path_in_sqlite = path;
 	if (strlen(path) == 1){
@@ -1095,6 +1120,8 @@ int ibc_write(const char *path, const char *buf, size_t size, off_t offset,
 			retstat = -EIO;
 		}
 	}
+
+	pthread_mutex_unlock(BB_DATA->lck);
 
 	log_msg("ibc_write: Completed\n");
 	return retstat;
@@ -1187,6 +1214,8 @@ int ibc_release(const char *path, struct fuse_file_info *fi)
 	log_msg("ibc_release: [%s]\n", path);
 	log_msg(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n");
 
+	pthread_mutex_lock(BB_DATA->lck);
+
 	char fpath[PATH_MAX];
 	ibc_fullpath(fpath, path);
 
@@ -1267,6 +1296,8 @@ int ibc_release(const char *path, struct fuse_file_info *fi)
 
 	log_msg("ibc_release: release memory\n");
 	free_directory(dir);
+
+	pthread_mutex_unlock(BB_DATA->lck);
 
     log_msg("ibc_release: Completed\n");
     return retstat;
@@ -1399,6 +1430,8 @@ int ibc_opendir(const char *path, struct fuse_file_info *fi)
 	log_msg("ibc_opendir: %s\n", path);
 	log_msg(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n");
 
+	pthread_mutex_lock(BB_DATA->lck);
+
 	int retstat = 0;
 	int err_trans = -1;
 	int err_sqlite = 0;
@@ -1411,18 +1444,45 @@ int ibc_opendir(const char *path, struct fuse_file_info *fi)
 		parent_path_in_sqlite = copy_text(".\0");
 	}
 
-	log_msg("ibc_opendir: search_directory [%s]\n", path_in_sqlite);
-	//Do not use transaction to boost throughtput
-	directory* dir = search_directory(BB_DATA->sqlite_conn, path_in_sqlite);
-	if (dir == NULL || dir->is_delete){
-		log_msg("ibc_opendir: dir is not in sqlite or is_delete is set\n");
-		retstat = -ENOENT;
-	} else if (dir->type != 1){
-		log_msg("ibc_opendir: dir is not a folder in sqlite. type: [%d]\n", dir->type);
-		retstat = -ENOTDIR;
+	directory* dir = NULL;
+
+	log_msg("ibc_opendir: begin_transaction (1)\n");
+	err_trans = begin_transaction(BB_DATA->sqlite_conn);
+	if (err_trans != 0){
+		retstat = -EBUSY;
 	}
 
+	if (retstat >= 0){
+		log_msg("ibc_opendir: search_directory [%s]\n", path_in_sqlite);
+		dir = search_directory(BB_DATA->sqlite_conn, path_in_sqlite);
+		if (dir == NULL || dir->is_delete){
+			log_msg("ibc_opendir: dir is not in sqlite or is_delete is set\n");
+			retstat = -ENOENT;
+		} else if (dir->type != 1){
+			log_msg("ibc_opendir: dir is not a folder in sqlite. type: [%d]\n", dir->type);
+			retstat = -ENOTDIR;
+		}
+	}
 
+	//Finish transaction
+	if (err_trans == 0){
+		if (retstat >= 0){
+			log_msg("ibc_opendir: commit_transaction (1)\n");
+			err_trans = commit_transaction(BB_DATA->sqlite_conn);
+		}
+		else{
+			log_msg("ibc_opendir: rollback_transaction (1)\n");
+			err_trans = rollback_transaction(BB_DATA->sqlite_conn);
+		}
+
+		if (err_trans != 0){
+			log_msg("ibc_opendir: Failed to commit_transaction or rollback_transaction (1)\n");
+			retstat = -EIO;
+		}
+
+		//reset err_trans
+		err_trans = -1;
+	}
 	if (retstat >= 0){
 		//Get local full path
 		char fpath[PATH_MAX];
@@ -1458,7 +1518,7 @@ int ibc_opendir(const char *path, struct fuse_file_info *fi)
 
 	//Begin transaction now
 	if (retstat >= 0 && !(dir->is_local)){
-		log_msg("ibc_opendir: begin_transaction\n");
+		log_msg("ibc_opendir: begin_transaction (2)\n");
 		err_trans = begin_transaction(BB_DATA->sqlite_conn);
 		if (err_trans != 0){
 			retstat = -EBUSY;
@@ -1508,19 +1568,21 @@ int ibc_opendir(const char *path, struct fuse_file_info *fi)
 	//Finish transaction
 	if (err_trans == 0){
 		if (retstat >= 0){
-			log_msg("ibc_opendir: commit_transaction\n");
+			log_msg("ibc_opendir: commit_transaction (2)\n");
 			err_trans = commit_transaction(BB_DATA->sqlite_conn);
 		}
 		else{
-			log_msg("ibc_opendir: rollback_transaction\n");
+			log_msg("ibc_opendir: rollback_transaction (2)\n");
 			err_trans = rollback_transaction(BB_DATA->sqlite_conn);
 		}
 
 		if (err_trans != 0){
-			log_msg("ibc_opendir: Failed to commit_transaction or rollback_transaction\n");
+			log_msg("ibc_opendir: Failed to commit_transaction or rollback_transaction (2)\n");
 			retstat = -EIO;
 		}
 	}
+
+	pthread_mutex_unlock(BB_DATA->lck);
 
 	log_msg("ibc_opendir: Completed\n");
 	return retstat;
@@ -1554,25 +1616,57 @@ int ibc_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offse
 	log_msg("ibc_readdir: [%s]\n", path);
 	log_msg(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n");
 
+	pthread_mutex_lock(BB_DATA->lck);
+
 	char* path_in_sqlite = path;
 	if (strlen(path) == 1){
 		path_in_sqlite = "\0";
 	}
 
-	int ret = 0;
+	int retstat = 0;
 	int dir_cnt = 0;
-	directory** sub_dirs = search_subdirectories(BB_DATA->sqlite_conn, path_in_sqlite, &dir_cnt, 0);
+	directory** sub_dirs = NULL;
+
+	log_msg("ibc_opendir: begin_transaction\n");
+	int err_trans = begin_transaction(BB_DATA->sqlite_conn);
+	if (err_trans != 0){
+		retstat = -EBUSY;
+	}
+
+	if (retstat >= 0){
+		sub_dirs = search_subdirectories(BB_DATA->sqlite_conn, path_in_sqlite, &dir_cnt, 0);
+	}
+
+	if (err_trans == 0){
+		if (retstat >= 0){
+			log_msg("ibc_opendir: commit_transaction (2)\n");
+			err_trans = commit_transaction(BB_DATA->sqlite_conn);
+		}
+		else{
+			log_msg("ibc_opendir: rollback_transaction (2)\n");
+			err_trans = rollback_transaction(BB_DATA->sqlite_conn);
+		}
+
+		if (err_trans != 0){
+			log_msg("ibc_opendir: Failed to commit_transaction or rollback_transaction (2)\n");
+			retstat = -EIO;
+		}
+	}
+
 	if (sub_dirs != NULL){
 		for (int i = 0; i < dir_cnt; ++i){
 			if (filler(buf, sub_dirs[i]->entry_name, NULL, 0) != 0) {
-				ret = -ENOMEM;
+				retstat = -ENOMEM;
 				break;
 			}
 		}
 	}
 	free_directories(sub_dirs, dir_cnt);
+
+	pthread_mutex_unlock(BB_DATA->lck);
+
 	log_msg("ibc_readdir: Complted [%s]\n", path);
-	return ret;
+	return retstat;
 }
 
 /** Release directory
@@ -1605,6 +1699,8 @@ int ibc_ftruncate(const char *path, off_t offset, struct fuse_file_info *fi)
 	log_msg("\n>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n");
     log_msg("ibc_ftruncate(path=\"%s\", offset=%lld, fi=0x%08x)\n", path, offset, fi);
     log_msg(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n");
+
+    pthread_mutex_lock(BB_DATA->lck);
 
     int retstat = 0;
 	int err_sqlite = 0;
@@ -1650,6 +1746,8 @@ int ibc_ftruncate(const char *path, off_t offset, struct fuse_file_info *fi)
 		}
 	}
 
+	pthread_mutex_unlock(BB_DATA->lck);
+
 	log_msg("ibc_ftruncate: Completed\n");
 	return retstat;
 }
@@ -1671,6 +1769,8 @@ int ibc_getattr(const char *path, struct stat *statbuf)
 	log_msg("\n>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n");
     log_msg("ibc_getattr: %s\n", path);
     log_msg(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n");
+
+    pthread_mutex_lock(BB_DATA->lck);
 
 #ifdef VMWARE
     //Skip some strange files which do not exit
@@ -1696,7 +1796,9 @@ int ibc_getattr(const char *path, struct stat *statbuf)
 	}
 #endif
 
-    int ret = 0;
+    int retstat = 0;
+    directory* dir = NULL;
+
     //clear memory
 	memset(statbuf, 0, sizeof(struct stat));
 
@@ -1705,14 +1807,39 @@ int ibc_getattr(const char *path, struct stat *statbuf)
 		path_in_sqlite = "\0";
 	}
 
-	log_msg("ibc_getattr: search_directory [%s]\n", path_in_sqlite);
-	directory* dir = search_directory(BB_DATA->sqlite_conn, path_in_sqlite);
-
-	if (dir == NULL || dir->is_delete){
-		ret = -ENOENT;
+	log_msg("ibc_opendir: begin_transaction\n");
+	int err_trans = begin_transaction(BB_DATA->sqlite_conn);
+	if (err_trans != 0){
+		retstat = -EBUSY;
 	}
 
-	if (ret >= 0){
+	if (retstat >= 0){
+		log_msg("ibc_getattr: search_directory [%s]\n", path_in_sqlite);
+		dir = search_directory(BB_DATA->sqlite_conn, path_in_sqlite);
+	}
+
+	if (dir == NULL || dir->is_delete){
+		retstat = -ENOENT;
+	}
+
+	//Finish transaction
+	if (err_trans == 0){
+		if (retstat >= 0){
+			log_msg("ibc_ftruncate: commit_transaction\n");
+			err_trans = commit_transaction(BB_DATA->sqlite_conn);
+		}
+		else{
+			log_msg("ibc_ftruncate: rollback_transaction\n");
+			err_trans = rollback_transaction(BB_DATA->sqlite_conn);
+		}
+
+		if (err_trans != 0){
+			log_msg("ibc_ftruncate: Failed to commit_transaction or rollback_transaction\n");
+			retstat = -EIO;
+		}
+	}
+
+	if (retstat >= 0){
 		log_msg("ibc_getattr: fill in statbuf\n");
 		statbuf->st_size = dir->size;
 		statbuf->st_uid = getuid();
@@ -1736,9 +1863,11 @@ int ibc_getattr(const char *path, struct stat *statbuf)
 
 	free_directory(dir);
 
+	pthread_mutex_unlock(BB_DATA->lck);
+
 	log_msg("ibc_getattr: Completed.\n");
 
-	return ret;
+	return retstat;
 }
 
 
@@ -1878,6 +2007,16 @@ int main(int argc, char *argv[])
     argv[argc-1] = NULL;
     argc--;
 
+    pthread_mutex_t lock;
+
+	//Init mutex
+	if (pthread_mutex_init(&lock, NULL) != 0)
+	{
+		fprintf(stderr, "mutex init failed\n");
+		return -1;
+	}
+
+	bb_data->lck = &lock;
     bb_data->logfile = log_open("bbfs.log");
 
     // Global initialisation
@@ -1895,10 +2034,15 @@ int main(int argc, char *argv[])
     sqlite3 *sqlite_conn = init_db(dbfile_path);
     bb_data->sqlite_conn = sqlite_conn;
 
+
+
+
     // turn over control to fuse
     fprintf(stderr, "about to call fuse_main\n");
     fuse_stat = fuse_main(argc, argv, &bb_oper, bb_data);
     fprintf(stderr, "fuse_main returned %d\n", fuse_stat);
+
+    pthread_mutex_destroy(&lock);
 
     return fuse_stat;
 }

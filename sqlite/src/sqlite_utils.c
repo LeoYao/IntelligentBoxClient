@@ -649,13 +649,13 @@ sqlite3* init_db(const char* dbfile_path){
 int begin_transaction(sqlite3* db){
 
 	log_msg("\nbegin_transaction: Begin\n");
-	char* sql = "BEGIN TRANSACTION;";
+	char* sql = "BEGIN IMMEDIATE TRANSACTION;";
 	char *zErrMsg = 0;
 	//Begin transaction to database
 	log_msg("begin_transaction: Runing [%s]\n", sql);
 	int rc = sqlite3_exec(db, sql, 0, 0, &zErrMsg);
 	//If SQLITE is busy, retry twice, if still busy then abort
-	for(int i=0;i<2;i++){
+	for(int i=0;i<5;i++){
 		if(rc == SQLITE_BUSY){
 			log_msg("begin_transaction: Retrying [%d] times\n", i);
 			sqlite3_free(zErrMsg);
@@ -667,28 +667,10 @@ int begin_transaction(sqlite3* db){
 	}
 
 	if (rc != SQLITE_OK){
-		log_msg("begin_transaction: Failed to run 'BEGIN TRANSACTION'. Error message: %s\n", zErrMsg);
+		log_msg("begin_transaction: Failed to create a transaction. Error message: %s\n", zErrMsg);
 		sqlite3_free(zErrMsg);
-		return rc;
-	}
 
-	sql = "UPDATE LOCK SET dummy = 1;";
-	log_msg("begin_transaction: Runing [%s]\n", sql);
-	rc = sqlite3_exec(db, sql, 0, 0, &zErrMsg);
-	//If SQLITE is busy, retry twice, if still busy then abort
-	for(int i=0;i<2;i++){
-		if(rc == SQLITE_BUSY){
-			log_msg("begin_transaction: Retrying [%d] times\n", i);
-			sqlite3_free(zErrMsg);
-			delay(500);
-			rc = sqlite3_exec(db, sql, 0, 0, &zErrMsg);
-		}else{
-			break;
-		}
-	}
-	if (rc != SQLITE_OK){
-		log_msg("\nbegin_transaction: Failed to create a transaction. Error message: %s\n", zErrMsg);
-		sqlite3_free(zErrMsg);
+		log_msg("begin_transaction: rollback\n");
 	}
 	log_msg("begin_transaction: Completed\n");
 
@@ -700,8 +682,15 @@ int commit_transaction(sqlite3* db){
 	char *zErrMsg = 0;
 	int rc = sqlite3_exec(db, "Commit Transaction;", 0, 0, &zErrMsg);
 
+	int i = 0;
+	while(rc == SQLITE_BUSY && i < 100){
+		log_msg("commit_transaction: Retrying [%d] times\n", i++);
+		delay(250);
+		rc = sqlite3_exec(db, "Commit Transaction;", 0, 0, &zErrMsg);
+	}
+
 	if (rc != SQLITE_OK){
-		log_msg("\commit_transaction: Failed to commit a transaction. Error message: %s\n", sqlite3_errmsg(db));
+		log_msg("commit_transaction: Failed to commit a transaction. Error message: %s\n", sqlite3_errmsg(db));
 	}
 	sqlite3_free(zErrMsg);
 	log_msg("commit_transaction: Completed\n");
@@ -713,6 +702,14 @@ int rollback_transaction(sqlite3* db){
 	log_msg("\nrollback_transaction: Begin\n");
 	char *zErrMsg = 0;
 	int rc = sqlite3_exec(db, "Rollback Transaction;", 0, 0, &zErrMsg);
+
+	int i = 0;
+	while(rc == SQLITE_BUSY && i < 100){
+		log_msg("rollback_transaction: Retrying [%d] times\n", i++);
+		delay(250);
+		rc = sqlite3_exec(db, "Rollback Transaction;", 0, 0, &zErrMsg);
+	}
+
 	if (rc != SQLITE_OK){
 		log_msg("rollback_transaction: Failed to rollback a trasaction. Error message: %s", zErrMsg);
 	}

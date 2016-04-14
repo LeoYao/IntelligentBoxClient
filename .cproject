@@ -40,6 +40,9 @@
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/${ProjName}/utils/include}&quot;"/>
 								</option>
 								<option id="gnu.c.compiler.option.misc.other.11394794" name="Other flags" superClass="gnu.c.compiler.option.misc.other" value="-c -fmessage-length=0 -std=c99 -fpermissive `pkg-config fuse --cflags --libs`" valueType="string"/>
+								<option id="gnu.c.compiler.option.preprocessor.def.symbols.1409851286" superClass="gnu.c.compiler.option.preprocessor.def.symbols" valueType="definedSymbols">
+									<listOptionValue builtIn="false" value="SQLITE_THREADSAFE=1"/>
+								</option>
 								<inputType id="cdt.managedbuild.tool.gnu.c.compiler.input.1205876506" superClass="cdt.managedbuild.tool.gnu.c.compiler.input"/>
 							</tool>
 							<tool id="cdt.managedbuild.tool.gnu.c.linker.base.911641076" name="GCC C Linker" superClass="cdt.managedbuild.tool.gnu.c.linker.base"/>

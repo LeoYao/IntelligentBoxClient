@@ -25,6 +25,7 @@
 #include <stdio.h>
 #include "dropbox.h"
 #include <sqlite3.h>
+#include <pthread.h>
 
 struct bb_state {
     FILE *logfile;
@@ -33,6 +34,7 @@ struct bb_state {
     char *metadatadir;
     drbClient* client;
     sqlite3 *sqlite_conn;
+    pthread_mutex_t* lck;
 };
 
 #define BB_DATA ((struct bb_state *) fuse_get_context()->private_data)
