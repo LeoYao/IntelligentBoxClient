@@ -72,6 +72,7 @@ int delete_directory(sqlite3* db, const char* full_path);
 int clean_subdirectories(sqlite3* db, const char* parent_path);
 directory** search_subdirectories(sqlite3* db, const char* parent_path, int* count, int include_deleted);
 
+int begin_read_transaction(sqlite3* db);
 int begin_transaction(sqlite3* db);
 int commit_transaction(sqlite3* db);
 int rollback_transaction(sqlite3* db);

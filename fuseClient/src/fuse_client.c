@@ -1446,8 +1446,8 @@ int ibc_opendir(const char *path, struct fuse_file_info *fi)
 
 	directory* dir = NULL;
 
-	log_msg("ibc_opendir: begin_transaction (1)\n");
-	err_trans = begin_transaction(BB_DATA->sqlite_conn);
+	log_msg("ibc_opendir: begin_read_transaction (1)\n");
+	err_trans = begin_read_transaction(BB_DATA->sqlite_conn);
 	if (err_trans != 0){
 		retstat = -EBUSY;
 	}
@@ -1466,14 +1466,8 @@ int ibc_opendir(const char *path, struct fuse_file_info *fi)
 
 	//Finish transaction
 	if (err_trans == 0){
-		if (retstat >= 0){
-			log_msg("ibc_opendir: commit_transaction (1)\n");
-			err_trans = commit_transaction(BB_DATA->sqlite_conn);
-		}
-		else{
-			log_msg("ibc_opendir: rollback_transaction (1)\n");
-			err_trans = rollback_transaction(BB_DATA->sqlite_conn);
-		}
+		log_msg("ibc_opendir: rollback_transaction (1)\n");
+		err_trans = rollback_transaction(BB_DATA->sqlite_conn);
 
 		if (err_trans != 0){
 			log_msg("ibc_opendir: Failed to commit_transaction or rollback_transaction (1)\n");
@@ -1483,6 +1477,8 @@ int ibc_opendir(const char *path, struct fuse_file_info *fi)
 		//reset err_trans
 		err_trans = -1;
 	}
+
+
 	if (retstat >= 0){
 		//Get local full path
 		char fpath[PATH_MAX];
@@ -1627,8 +1623,8 @@ int ibc_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offse
 	int dir_cnt = 0;
 	directory** sub_dirs = NULL;
 
-	log_msg("ibc_opendir: begin_transaction\n");
-	int err_trans = begin_transaction(BB_DATA->sqlite_conn);
+	log_msg("ibc_opendir: begin_read_transaction\n");
+	int err_trans = begin_read_transaction(BB_DATA->sqlite_conn);
 	if (err_trans != 0){
 		retstat = -EBUSY;
 	}
@@ -1638,14 +1634,8 @@ int ibc_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offse
 	}
 
 	if (err_trans == 0){
-		if (retstat >= 0){
-			log_msg("ibc_opendir: commit_transaction (2)\n");
-			err_trans = commit_transaction(BB_DATA->sqlite_conn);
-		}
-		else{
-			log_msg("ibc_opendir: rollback_transaction (2)\n");
-			err_trans = rollback_transaction(BB_DATA->sqlite_conn);
-		}
+		log_msg("ibc_opendir: rollback_transaction (2)\n");
+		err_trans = rollback_transaction(BB_DATA->sqlite_conn);
 
 		if (err_trans != 0){
 			log_msg("ibc_opendir: Failed to commit_transaction or rollback_transaction (2)\n");
@@ -1807,8 +1797,8 @@ int ibc_getattr(const char *path, struct stat *statbuf)
 		path_in_sqlite = "\0";
 	}
 
-	log_msg("ibc_opendir: begin_transaction\n");
-	int err_trans = begin_transaction(BB_DATA->sqlite_conn);
+	log_msg("ibc_opendir: begin_read_transaction\n");
+	int err_trans = begin_read_transaction(BB_DATA->sqlite_conn);
 	if (err_trans != 0){
 		retstat = -EBUSY;
 	}
@@ -1824,17 +1814,11 @@ int ibc_getattr(const char *path, struct stat *statbuf)
 
 	//Finish transaction
 	if (err_trans == 0){
-		if (retstat >= 0){
-			log_msg("ibc_ftruncate: commit_transaction\n");
-			err_trans = commit_transaction(BB_DATA->sqlite_conn);
-		}
-		else{
-			log_msg("ibc_ftruncate: rollback_transaction\n");
-			err_trans = rollback_transaction(BB_DATA->sqlite_conn);
-		}
+		log_msg("ibc_ftruncate: rollback_transaction\n");
+		err_trans = rollback_transaction(BB_DATA->sqlite_conn);
 
 		if (err_trans != 0){
-			log_msg("ibc_ftruncate: Failed to commit_transaction or rollback_transaction\n");
+			log_msg("ibc_ftruncate: Failed to rollback_transaction\n");
 			retstat = -EIO;
 		}
 	}

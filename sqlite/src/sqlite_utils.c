@@ -646,10 +646,41 @@ sqlite3* init_db(const char* dbfile_path){
 	return (sqlite_conn);
 }
 
-int begin_transaction(sqlite3* db){
+int begin_read_transaction(sqlite3* db){
 
 	log_msg("\nbegin_transaction: Begin\n");
 	char* sql = "BEGIN IMMEDIATE TRANSACTION;";
+	char *zErrMsg = 0;
+	//Begin transaction to database
+	log_msg("begin_transaction: Runing [%s]\n", sql);
+	int rc = sqlite3_exec(db, sql, 0, 0, &zErrMsg);
+	//If SQLITE is busy, retry twice, if still busy then abort
+	for(int i=0;i<5;i++){
+		if(rc == SQLITE_BUSY){
+			log_msg("begin_transaction: Retrying [%d] times\n", i);
+			sqlite3_free(zErrMsg);
+			delay(500);
+			rc = sqlite3_exec(db, sql, 0, 0, &zErrMsg);
+		}else{
+			break;
+		}
+	}
+
+	if (rc != SQLITE_OK){
+		log_msg("begin_transaction: Failed to create a transaction. Error message: %s\n", zErrMsg);
+		sqlite3_free(zErrMsg);
+
+		log_msg("begin_transaction: rollback\n");
+	}
+	log_msg("begin_transaction: Completed\n");
+
+	return rc;
+}
+
+int begin_transaction(sqlite3* db){
+
+	log_msg("\nbegin_transaction: Begin\n");
+	char* sql = "BEGIN EXCLUSIVE TRANSACTION;";
 	char *zErrMsg = 0;
 	//Begin transaction to database
 	log_msg("begin_transaction: Runing [%s]\n", sql);
