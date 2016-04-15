@@ -1910,6 +1910,17 @@ void ibc_usage()
     abort();
 }
 
+int busy_handler(void* arg, int times){
+	//fprintf(stderr, "I am here. %d\n", times);
+	if (times == 100){
+		return 0;
+	}
+	else {
+		delay(30);
+		return 1;
+	}
+}
+
 int main(int argc, char *argv[])
 {
     int fuse_stat;
@@ -2001,7 +2012,7 @@ int main(int argc, char *argv[])
 	}
 
 	bb_data->lck = &lock;
-    bb_data->logfile = log_open("bbfs.log");
+    bb_data->logfile = log_open("fs_logs.log");
 
     // Global initialisation
 	drbInit();
@@ -2016,10 +2027,8 @@ int main(int argc, char *argv[])
     strncpy(dbfile_path + strlen(bb_data->metadatadir), "/dir.db", 7);
     dbfile_path[strlen(bb_data->metadatadir) + 7] = '\0';
     sqlite3 *sqlite_conn = init_db(dbfile_path);
+    sqlite3_busy_handler(sqlite_conn, busy_handler, NULL); //busy timeout 3 seconds
     bb_data->sqlite_conn = sqlite_conn;
-
-
-
 
     // turn over control to fuse
     fprintf(stderr, "about to call fuse_main\n");

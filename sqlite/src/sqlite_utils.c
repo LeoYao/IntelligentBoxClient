@@ -655,7 +655,7 @@ int begin_read_transaction(sqlite3* db){
 	log_msg("begin_transaction: Runing [%s]\n", sql);
 	int rc = sqlite3_exec(db, sql, 0, 0, &zErrMsg);
 	//If SQLITE is busy, retry twice, if still busy then abort
-	for(int i=0;i<5;i++){
+	/*for(int i=0;i<5;i++){
 		if(rc == SQLITE_BUSY){
 			log_msg("begin_transaction: Retrying [%d] times\n", i);
 			sqlite3_free(zErrMsg);
@@ -664,7 +664,7 @@ int begin_read_transaction(sqlite3* db){
 		}else{
 			break;
 		}
-	}
+	}*/
 
 	if (rc != SQLITE_OK){
 		log_msg("begin_transaction: Failed to create a transaction. Error message: %s\n", zErrMsg);
@@ -686,7 +686,7 @@ int begin_transaction(sqlite3* db){
 	log_msg("begin_transaction: Runing [%s]\n", sql);
 	int rc = sqlite3_exec(db, sql, 0, 0, &zErrMsg);
 	//If SQLITE is busy, retry twice, if still busy then abort
-	for(int i=0;i<5;i++){
+	/*for(int i=0;i<5;i++){
 		if(rc == SQLITE_BUSY){
 			log_msg("begin_transaction: Retrying [%d] times\n", i);
 			sqlite3_free(zErrMsg);
@@ -695,7 +695,7 @@ int begin_transaction(sqlite3* db){
 		}else{
 			break;
 		}
-	}
+	}*/
 
 	if (rc != SQLITE_OK){
 		log_msg("begin_transaction: Failed to create a transaction. Error message: %s\n", zErrMsg);
